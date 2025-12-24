@@ -1,0 +1,43 @@
+body {
+    background-color: burlywood;
+    font-family: Verdana, sans-serif;
+}
+
+.hidden {
+    display: none;
+}
+
+#versions span {
+    font-size: x-small;
+}
+
+.image-title {
+    margin-bottom: 0.3ex;
+}
+
+.image-display {
+    max-width: 500px;
+    max-height: 200px;
+    border: 1px solid black;
+    background-color: white;
+}
+
+.upload-input:hover,
+.image-download:hover,
+.image-name:hover {
+    color: red;
+}
+
+.image-display:hover {
+    border-color: red;
+}
+
+.upload-input, .image-name {
+    width: 100%;
+    font-family: monospace;
+    font-size: small;
+}
+
+.image-description {
+    font-size: small;
+}
