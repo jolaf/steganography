@@ -10,29 +10,42 @@
 </head>
 <body>
 <script type="py" src="script.py" config="pyscript.toml"></script>
-<h1>Steganography</h1>
-<code id="versions">Loading, please wait...<br>
-  <span>(if it takes too long, please refresh page)</span>
-</code>
-<div id="content" class="hidden">
-  <div id="options"></div>
-  <div id="template" class="hidden">
-    <div class="image-block">
+<div id="all">
+  <h1>Steganography</h1>
+  <code id="versions">Loading, please wait...<br>
+    <span>(if it takes too long, please refresh page)</span>
+  </code>
+  <div id="content" class="hidden">
+    <div id="options">
+      <h2 class="image-title">Options</h2>
+    </div>
+    <div id="template" class="image-block hidden">
       <h2 class="image-title"></h2>
-      <button class="image-download" title="Click to download to your computer">Download</button>
-      <label class="image-name"></label>
-      <a class="image-download-link hidden" download="" href=""></a>
-      <input class="upload-input" title="Click to upload a file to process" type="file">
-      <br>
-      <label class="image-description">Processing image...</label>
-      <br>
-      <a class="image-display-link" title="Click for full screen preview" target="_blank" href="">
-        <img class="image-display hidden" alt="" src="">
-      </a>
+      <div class="image-upload-block">
+        <input class="image-upload" title="Click to upload a file to process" type="file">
+      </div>
+      <label class="image-description"></label>
+      <div class="image-display-block hidden">
+        <a class="image-display-link" title="Click for full screen preview" target="_blank" href="">
+          <img class="image-display" alt="preview" src="/">
+        </a>
+      </div>
+      <div class="image-download-block hidden">
+        <a class="image-download-link" title="Click to download to your computer" download="" href="">
+          <button class="image-download ">Download</button>
+          <label class="image-name"></label>
+        </a>
+      </div>
+    </div>
+    <div id="uploads"></div>
+    <div id="generated"></div>
+    <div id="footer">
+      <table><tr>
+        <td><p>© <a href="https://vk.com/jolaf">Василий Захаров</a> 2025</p></td>
+        <td><p id="build">dev</p></td>
+      </tr></table>
     </div>
   </div>
-  <div id="uploads"></div>
-  <div id="generated"></div>
 </div>
 </body>
 </html>
