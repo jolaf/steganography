@@ -26,8 +26,6 @@ h1 {
 }
 
 .image-display {
-    max-width: 500px;
-    max-height: 200px;
     border: 1px solid black;
     background-color: white;
 }

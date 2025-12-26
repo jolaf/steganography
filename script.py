@@ -9,7 +9,7 @@ from typing import cast, Any, ClassVar, TYPE_CHECKING
 
 from coolname import generate_slug  # type: ignore[attr-defined]
 
-from pyscript import when, window, storage, Storage  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
+from pyscript import document, when, window, storage, Storage  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 from pyscript.web import page  # type: ignore[import-not-found]  # pylint: disable=import-error, no-name-in-module
 from pyscript.ffi import to_js  # type: ignore[import-not-found]  # pylint: disable=import-error, no-name-in-module
 
@@ -21,7 +21,12 @@ except ImportError:
     except ImportError:
         pyscriptVersion = next(tag.src for tag in page['script']).split('/')[-2] or "UNKNOWN"
 
-from pyodide_js import version as pyodideVersion  # type: ignore[import-not-found]  # pylint: disable=import-error, wrong-import-order
+try:
+    from pyodide_js import version as pyodideVersion  # type: ignore[import-not-found]  # pylint: disable=import-error, wrong-import-order
+except ImportError:
+    pyodideVersion = "UNKNOWN"
+
+from js import CSSStyleSheet  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module, wrong-import-order
 
 from Steganography import getImageMode, imageToBytes, loadImage, processImage
 
@@ -58,7 +63,7 @@ else:
 
 TEXT = 'text'
 
-def log(*args: str) -> None:
+def log(*args: Any) -> None:
     print(*args)
 
 def getFileNameFromPath(path: str) -> str:
@@ -125,8 +130,9 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         self.taskName = ''
         self.maxPreviewWidth = 500
         self.maxPreviewHeight = 200
-        self.resizeSourceWidth = 0
-        self.resizeSourceHeight = 0
+        self.resizeFactor = 0
+        self.resizeWidth = 0
+        self.resizeHeight = 0
         self.cropWidth = 0
         self.cropHeight = 0
         self.keyFactor = 1.0
@@ -142,6 +148,11 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         for (name, defaultValue) in vars(self).items():
             if isinstance(defaultValue, Options.OptionType):
                 self.configureTag(name, defaultValue)
+
+        # Create stylesheet to update with options
+        self.styleSheet = CSSStyleSheet.new()
+        document.adoptedStyleSheets.push(self.styleSheet)
+        self.updateStyle()
 
     def configureTag(self, name: str, defaultValue: Options.OptionType) -> None:
         value = self.get(name, defaultValue)
@@ -167,6 +178,14 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
             log(f"Options.update({name}, {newValue!r})")
             self[name] = newValue
             await self.sync()
+
+    def updateStyle(self) -> None:
+        self.styleSheet.replaceSync(f'''
+.image-display {{
+    max-width: {self.maxPreviewWidth}px;
+    max-height: {self.maxPreviewHeight}px;
+}}
+        ''')
 
     @classmethod
     async def init(cls) -> None:
