@@ -90,6 +90,7 @@ def main(*args: str) -> None:
     parser.add_argument('-r', '--rotate', help = 'rotate image to a random angle', action = 'store_true')
     parser.add_argument('-s', '--resize', help = 'resize image to the specified factor or size')
     parser.add_argument('-d', '--dither', help = 'dither image when converting to 1-bit format', action = 'store_true')
+    parser.add_argument('-b', '--smooth', help = 'smoother background (doubles the resolution)', action = 'store_true')
     parser.add_argument('inputImage', help = 'path to input image file to process')
     options = parser.parse_args(args)
     size: int | str

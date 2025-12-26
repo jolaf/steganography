@@ -143,8 +143,10 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         self.lockWidth = 0
         self.lockHeight = 0
         self.keyResize = False
-        self.smoothBackground = False
+        self.dither = False
+        self.smooth = False
 
+        # Configure tags to connect to the options
         for (name, defaultValue) in vars(self).items():
             if isinstance(defaultValue, Options.OptionType):
                 self.configureTag(name, defaultValue)
@@ -291,7 +293,7 @@ class ImageBlock:
                 processed.display(None, "Processing image...")
                 await repaint()
                 try:
-                    image = processImage(image)
+                    image = processImage(image, **vars(options))
                 except Exception as ex:  # noqa : BLE001
                     self.display(None, f"Error processing image: {ex}")
                     return

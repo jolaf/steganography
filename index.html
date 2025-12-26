@@ -32,11 +32,14 @@
       </div>
       <div id="option-resize-image-block">
         Resize image to:
-        <label for="option-resize-source-width" hidden>width</label>
-        <input id="option-resize-source-width" type="number" maxlength="4" min="10" max="9999" value="">
+        *
+        <label for="option-resize-factor" hidden>factor</label>
+        <input id="option-resize-factor" type="number" maxlength="3" min="0" max="999" value="">
+        <label for="option-resize-width" hidden>width</label>
+        <input id="option-resize-width" type="number" maxlength="4" min="10" max="9999" value="">
         x
-        <label for="option-resize-source-height" hidden>height</label>
-        <input id="option-resize-source-height" type="number" maxlength="4" min="10" max="9999" value="">
+        <label for="option-resize-height" hidden>height</label>
+        <input id="option-resize-height" type="number" maxlength="4" min="10" max="9999" value="">
         <span>(only specify one value to constraint proportions)</span>
       </div>
       <div id="option-crop-image-block">
@@ -78,6 +81,10 @@
       <div id="option-key-resize-block">
         <label for="option-key-resize">Resize key to lock:</label>
         <input id="option-key-resize" type="checkbox">
+      </div>
+      <div id="option-dither-block">
+        <label for="option-dither">Smoother background:</label>
+        <input id="option-dither" type="checkbox">
       </div>
       <div id="option-smooth-block">
         <label for="option-smooth-background">Smoother background:</label>
