@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from asyncio import sleep
-from re import split
-from sys import version
-from typing import cast, Any, TYPE_CHECKING
+from asyncio import create_task, sleep
+from itertools import chain
+from re import findall, split
+from sys import version as pythonVersion
+from typing import cast, Any, ClassVar, TYPE_CHECKING
 
 from coolname import generate_slug  # type: ignore[attr-defined]
 
-from pyscript import when, window  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
+from pyscript import when, window, storage, Storage  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 from pyscript.web import page  # type: ignore[import-not-found]  # pylint: disable=import-error, no-name-in-module
 from pyscript.ffi import to_js  # type: ignore[import-not-found]  # pylint: disable=import-error, no-name-in-module
 
@@ -24,10 +25,13 @@ from pyodide_js import version as pyodideVersion  # type: ignore[import-not-foun
 from Steganography import getImageMode, imageToBytes, loadImage, processImage
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     Event = Any  # Workarounds for mypy as stuff cannot be imported from PyScript when not in a browser
     Element = Any
     Blob = Any
     Uint8Array = Any
+    Storage = Any
     def createObjectURL(_file: Any) -> str: return ''  # pylint: disable=multiple-statements
     def revokeObjectURL(_url: str) -> None: pass  # pylint: disable=multiple-statements
 else:
@@ -37,6 +41,7 @@ else:
     revokeObjectURL = window.URL.revokeObjectURL
     window = None  # For cleaner code, make sure all used references are mentioned here
 
+# ToDo: these:
 # Global error handling
 # Task name (default: date_time)
 # Input image (upload, regenerate)
@@ -47,16 +52,6 @@ else:
 # Test (download) - make it with really two images overlaid!
 # Move loading log to the bottom
 # Check Rigging HTML for ideas
-
-# Options:
-# Max preview size: width, height (independent)
-# Resize input image to: width, height
-# Key size: xN, width, height
-# Working field size: xN, width, height
-# Random key rotation (check)
-# Resize key to lock?
-# Better background (check)
-# Regenerate
 
 TEXT = 'text'
 
@@ -78,8 +73,15 @@ def createObjectURLFromBytes(byteArray: bytes | Uint8Array) -> str:
     blob = Blob.new([byteArray,], to_js({'type': 'image/png'}))  # to_js() converts Python dict into JS object
     return createObjectURL(blob)
 
+async def fileToByteArray(file: Any) -> Uint8Array:
+    return Uint8Array.new(await file.arrayBuffer())
+
 def getTagByID(tagID: str) -> Element:
-    return page['#' + tagID][0]
+    try:
+        return page['#' + tagID][0]
+    except IndexError:
+        log("ERROR at getTagByID(): No tag ID found:", tagID)
+        raise
 
 def hide(element: str | Element) -> None:
     if isinstance(element, str):
@@ -111,12 +113,103 @@ def removeChildren(element: str | Element) -> None:
         element = getTagByID(element)
     element.innerHTML = ''
 
-def getImageBlock(name: str) -> Element:
-    return getTagByID('template').clone('image-block-' + name)
+class Options(Storage):  # type: ignore[misc, no-any-unimported]
 
-# ToDo: Can this function be inlined?
-async def fileToByteArray(file: Any) -> Uint8Array:
-    return Uint8Array.new(await file.arrayBuffer())
+    OptionType = str | int | float | bool
+
+    DEFAULT_VALUES: ClassVar[Mapping[type, int | float | bool]] = {int: 0, float: 1.0, bool: False}
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
+        # These fields define correct names, types and default values for options:
+        self.taskName = ''
+        self.maxPreviewWidth = 500
+        self.maxPreviewHeight = 200
+        self.resizeSourceWidth = 0
+        self.resizeSourceHeight = 0
+        self.cropWidth = 0
+        self.cropHeight = 0
+        self.keyFactor = 1.0
+        self.keyWidth = 0
+        self.keyHeight = 0
+        self.keyRotate = False
+        self.lockFactor = 1.0
+        self.lockWidth = 0
+        self.lockHeight = 0
+        self.keyResize = False
+        self.smoothBackground = False
+
+        for (name, defaultValue) in vars(self).items():
+            if isinstance(defaultValue, Options.OptionType):
+                self.configureTag(name, defaultValue)
+
+    @staticmethod
+    def getTag(name: str) -> Element:  # ToDo: Inline this method?
+        return getTagByID('-'.join(chain(('option',), (word.lower() for word in findall(r'[a-z]+|[A-Z][a-z]*|[A-Z]+', name)))))
+
+    def configureTag(self, name: str, defaultValue: Options.OptionType) -> None:
+        value = self.get(name, defaultValue)
+        assert isinstance(value, Options.OptionType), f"Incorrect type for option {name}: {type(value).__name__}, expected {type(defaultValue).__name__}"
+        tag = self.getTag(name)
+        if tag.type == 'checkbox':
+            tag.checked = value
+        else:
+            tag.value = value
+        log(f"Options.configureTag({name}, {defaultValue!r}): {type(tag).__name__} {tag.type} {tag.value!r}")
+
+        @when('change', tag)  # type: ignore[untyped-decorator]
+        async def update(e: Event) -> None:
+            newValue: Options.OptionType = e.target.value
+            assert isinstance(newValue, str), newValue
+            if isinstance(defaultValue, str):
+                if name == 'taskName' and not newValue:
+                    newValue = getRandomName()
+            elif newValue:  # int | float | bool
+                newValue = type(defaultValue)(newValue)
+            else:
+                newValue = Options.DEFAULT_VALUES[type(defaultValue)]
+            log(f"Options.update({name}, {newValue!r})")
+            self[name] = newValue
+            await self.sync()
+
+    @classmethod
+    async def init(cls) -> None:
+        global options  # noqa: PLW0603  # pylint: disable=global-statement
+        if not options:
+            options = await storage('steganography', storage_class = cls)
+
+    def __getattribute__(self, name: str) -> Any:  # ToDo: These methods are not needed?
+        defaultValue = super().__getattribute__(name)
+        log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, Options.OptionType)})")
+        if not isinstance(defaultValue, Options.OptionType):
+            return defaultValue  # Not an option field
+        ret = self.get(name, None)
+        log(f"Options.get({name}) = {ret!r}")
+        return defaultValue if ret is None else ret
+
+    def __setattr__(self, name: str, value: Options.OptionType) -> None:
+        # This method is not really used (configureTag().update() doesn't need it) but is provided here for completeness
+        try:
+            defaultValue = super().__getattribute__(name)
+            log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, Options.OptionType)})")
+            if isinstance(defaultValue, Options.OptionType):
+                if isinstance(defaultValue, float):
+                    assert isinstance(value, int | float), f"Incorrect type for option {name}: {type(value).__name__}, expected int or float"
+                else:
+                    assert isinstance(value, type(defaultValue)), f"Incorrect type for option {name}: {type(value).__name__}, expected {type(defaultValue).__name__}"
+                log(f"Options[{name}] = {value!r}")
+                self[name] = value
+                self.sync()
+        except AttributeError:
+            log(f"Options.__getattribute__({name}) = AttributeError")
+        log(f"Options.__setattr__({name}) = {value!r}")
+        super().__setattr__(name, value)
+
+options: Options | None = None
+
+def getImageBlock(name: str) -> Element:  # ToDo: Make these into a class
+    return getTagByID('template').clone('image-block-' + name)
 
 def showImage(name: str, byteArray: bytes | Uint8Array | None, description: str = "") -> None:
     if src := getAttr('image-display-' + name, 'src'):
@@ -183,19 +276,21 @@ def renderImage(name: str, upload: bool = False) -> None:
         else:
             showImage(name, None)
 
-def showVersions() -> None:
+def startLoading() -> None:
     setAttr('versions', TEXT, f'''\
 PyScript: {pyscriptVersion}
 Pyodide: {pyodideVersion}
-Python: {version}''')
+Python: {pythonVersion}
+    ''')
 
 def finishLoading() -> None:
     show('content')
 
-def main() -> None:
-    showVersions()
-    renderImage('source', upload = True)
+async def main() -> None:
+    startLoading()
+    await Options.init()
+    renderImage('source', upload = True)  # ToDo: Make names constants
     finishLoading()
 
 if __name__ == '__main__':
-    main()
+    create_task(main())  # noqa: RUF006

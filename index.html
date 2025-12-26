@@ -17,7 +17,72 @@
   </code>
   <div id="content" class="hidden">
     <div id="options">
-      <h2 class="image-title">Options</h2>
+      <div id="option-task-name-block">
+        <label for="option-task-name">Task name:</label>
+        <input id="option-task-name" type="text" maxlength="40" value="" placeholder="">
+      </div>
+      <div id="option-preview-size-block">
+        Max preview size:
+        <label for="option-max-preview-width" hidden>width</label>
+        <input id="option-max-preview-width" type="number" maxlength="4" min="100" max="9999" value="">
+        x
+        <label for="option-max-preview-height" hidden>height</label>
+        <input id="option-max-preview-height" type="number" maxlength="4" min="100" max="9999" value="">
+        <span>(clear the field to impose no limit)</span>
+      </div>
+      <div id="option-resize-image-block">
+        Resize image to:
+        <label for="option-resize-source-width" hidden>width</label>
+        <input id="option-resize-source-width" type="number" maxlength="4" min="10" max="9999" value="">
+        x
+        <label for="option-resize-source-height" hidden>height</label>
+        <input id="option-resize-source-height" type="number" maxlength="4" min="10" max="9999" value="">
+        <span>(only specify one value to constraint proportions)</span>
+      </div>
+      <div id="option-crop-image-block">
+        Crop image to:
+        <label for="option-crop-width" hidden>width</label>
+        <input id="option-crop-width" type="number" maxlength="4" min="10" max="9999" value="">
+        x
+        <label for="option-crop-height" hidden>height</label>
+        <input id="option-crop-height" type="number" maxlength="4" min="10" max="9999" value="">
+      </div>
+      <div id="option-key-size-block">
+        Key image size:
+        *
+        <label for="option-key-factor" hidden>factor</label>
+        <input id="option-key-factor" type="number" maxlength="3" min="0" max="999" value="">
+        <label for="option-key-width" hidden>width</label>
+        <input id="option-key-width" type="number" maxlength="4" min="10" max="9999" value="">
+        x
+        <label for="option-key-height" hidden>height</label>
+        <input id="option-key-height" type="number" maxlength="4" min="10" max="9999" value="">
+        <span>(defaults to input image size)</span>
+      </div>
+      <div id="option-key-rotate-block">
+        <label for="option-key-rotate">Random key rotation:</label>
+        <input id="option-key-rotate" type="checkbox">
+      </div>
+      <div id="option-lock-size-block">
+        Lock image size:
+        *
+        <label for="option-lock-factor" hidden>factor</label>
+        <input id="option-lock-factor" type="number" maxlength="3" min="1" max="999" value="">
+        <label for="option-lock-width" hidden>width</label>
+        <input id="option-lock-width" type="number" maxlength="4" min="10" max="9999" value="">
+        x
+        <label for="option-lock-height" hidden>height</label>
+        <input id="option-lock-height" type="number" maxlength="4" min="10" max="9999" value="">
+        (defaults to key size)
+      </div>
+      <div id="option-key-resize-block">
+        <label for="option-key-resize">Resize key to lock:</label>
+        <input id="option-key-resize" type="checkbox">
+      </div>
+      <div id="option-smooth-block">
+        <label for="option-smooth-background">Smoother background:</label>
+        <input id="option-smooth-background" type="checkbox">
+      </div>
     </div>
     <div id="template" class="image-block hidden">
       <h2 class="image-title"></h2>
@@ -27,7 +92,7 @@
       <label class="image-description"></label>
       <div class="image-display-block hidden">
         <a class="image-display-link" title="Click for full screen preview" target="_blank" href="">
-          <img class="image-display" alt="preview" src="/">
+          <img class="image-display" alt="preview" src=".">
         </a>
       </div>
       <div class="image-download-block hidden">
