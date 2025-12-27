@@ -22,7 +22,7 @@ except ImportError:
         pyscriptVersion = next(tag.src for tag in page['script']).split('/')[-2] or "UNKNOWN"
 
 try:
-    from pyodide_js import version as pyodideVersion  # type: ignore[import-not-found]  # pylint: disable=import-error, wrong-import-order
+    from pyodide_js import version as pyodideVersion  # type: ignore[import-not-found]
 except ImportError:
     pyodideVersion = "UNKNOWN"
 
@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     Storage = Any
     def createObjectURL(_file: Any) -> str: return ''  # pylint: disable=multiple-statements
     def revokeObjectURL(_url: str) -> None: pass  # pylint: disable=multiple-statements
+    adoptedStyleSheets = Any
 else:
     # Simplifying addressing to JS classes and functions
     Blob = window.Blob
@@ -48,6 +49,8 @@ else:
     createObjectURL = window.URL.createObjectURL
     revokeObjectURL = window.URL.revokeObjectURL
     window = None  # For cleaner code, make sure all used references are mentioned here
+    adoptedStyleSheets = document.adoptedStyleSheets
+    document = None
 
 # ToDo: these:
 # Global error handling
@@ -126,7 +129,7 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-        # These fields define correct names, types and default values for options:
+        # These fields define names, types and DEFAULT values for options, actual values are stored in Storage
         self.taskName = ''
         self.maxPreviewWidth = 500
         self.maxPreviewHeight = 200
@@ -153,7 +156,7 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
 
         # Create stylesheet to update with options
         self.styleSheet = CSSStyleSheet.new()
-        document.adoptedStyleSheets.push(self.styleSheet)
+        adoptedStyleSheets.push(self.styleSheet)
         self.updateStyle()
 
     def configureTag(self, name: str, defaultValue: Options.OptionType) -> None:
@@ -179,6 +182,8 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
                 newValue = Options.DEFAULT_VALUES[type(defaultValue)]
             log(f"Options.update({name}, {newValue!r})")
             self[name] = newValue
+            if name in ('maxPreviewWidth', 'maxPreviewHeight'):  # pylint: disable=use-set-for-membership
+                self.updateStyle()
             await self.sync()
 
     def updateStyle(self) -> None:
@@ -188,6 +193,33 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
     max-height: {self.maxPreviewHeight}px;
 }}
         ''')
+
+    def __getattribute__(self, name: str) -> Any:
+        defaultValue = super().__getattribute__(name)
+        #log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, Options.OptionType)})")
+        if not isinstance(defaultValue, Options.OptionType):
+            return defaultValue  # Not an option field
+        ret = self.get(name, None)
+        log(f"Options.get({name}) = {ret!r}")
+        return defaultValue if ret is None else ret
+
+    def __setattr__(self, name: str, value: Options.OptionType) -> None:
+        try:
+            defaultValue = super().__getattribute__(name)
+            #log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, Options.OptionType)})")
+            if isinstance(defaultValue, Options.OptionType):
+                if isinstance(defaultValue, float):
+                    assert isinstance(value, int | float), f"Incorrect type for option {name}: {type(value).__name__}, expected int or float"
+                else:
+                    assert isinstance(value, type(defaultValue)), f"Incorrect type for option {name}: {type(value).__name__}, expected {type(defaultValue).__name__}"
+                log(f"Options[{name}] = {value!r}")
+                self[name] = value
+                self.sync()
+                return
+        except AttributeError:
+            pass  # log(f"Options.__getattribute__({name}) = AttributeError")
+        log(f"Options.__setattr__({name}) = {value!r}")
+        super().__setattr__(name, value)
 
     @classmethod
     async def init(cls) -> None:
