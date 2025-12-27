@@ -64,6 +64,8 @@ else:
 # Move loading log to the bottom
 # Check Rigging HTML for ideas
 
+TagAttrValue = str | int | float | bool
+
 TEXT = 'text'
 
 def log(*args: Any) -> None:
@@ -109,12 +111,13 @@ def getAttr(element: str | Element, attr: str) -> str:
         return cast(str, element.innerText)
     return cast(str, element.getAttribute(attr))
 
-def setAttr(element: str | Element, attr: str, value: str) -> None:
+def setAttr(element: str | Element, attr: str, value: TagAttrValue, onlyIfAbsent: bool = False) -> None:
     if isinstance(element, str):
         element = getTagByID(element)
     if attr == TEXT:
-        element.innerText = value
-    else:
+        if not onlyIfAbsent or not element.innerText:
+            element.innerText = value
+    elif not onlyIfAbsent or not element.getAttribute(attr):
         element.setAttribute(attr, value)
 
 def removeChildren(element: str | Element) -> None:
@@ -123,17 +126,36 @@ def removeChildren(element: str | Element) -> None:
     element.innerHTML = ''
 
 class Options(Storage):  # type: ignore[misc, no-any-unimported]
-    OptionType = str | int | float | bool
-    DEFAULT_VALUES: ClassVar[Mapping[type, OptionType]] = {int: 0, float: 1.0, bool: False}
+    TAG_ARGS: ClassVar[Mapping[type[TagAttrValue], Mapping[str, TagAttrValue]]] = {
+        str: {
+        },
+        int: {
+            'inputmode': 'numeric',
+            'placeholder': 'integer',
+            'pattern': r'[0-9]+',
+            'default': 0,
+        },
+        float: {
+            'inputmode': 'decimal',
+            'placeholder': 'float resize factor',
+            'pattern': r'\.[0-9]{1,2}|[0-9]+\.[0-9]{1,2}|[0-9]+\.?',
+            'default': 1.0,
+        },
+        bool: {
+            'type': 'checkbox',
+            'default': False,
+        },
+    }
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        log("# Options: initializing default values")
 
         # These fields define names, types and DEFAULT values for options, actual values are stored in Storage
         self.taskName = ''
         self.maxPreviewWidth = 500
         self.maxPreviewHeight = 200
-        self.resizeFactor = 0
+        self.resizeFactor = 1.0
         self.resizeWidth = 0
         self.resizeHeight = 0
         self.cropWidth = 0
@@ -149,42 +171,59 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         self.dither = False
         self.smooth = False
 
-        # Configure tags to connect to the options
+        log("# Options: configuring tags and connecting them to options")
         for (name, defaultValue) in vars(self).items():
-            if isinstance(defaultValue, Options.OptionType):
+            if isinstance(defaultValue, TagAttrValue):
                 self.configureTag(name, defaultValue)
 
-        # Create stylesheet to update with options
+        log("# Options: configuring stylesheet to adjust with options")
         self.styleSheet = CSSStyleSheet.new()
         adoptedStyleSheets.push(self.styleSheet)
         self.updateStyle()
 
-    def configureTag(self, name: str, defaultValue: Options.OptionType) -> None:
-        value = self.get(name, defaultValue)
-        assert isinstance(value, Options.OptionType), f"Incorrect type for option {name}: {type(value).__name__}, expected {type(defaultValue).__name__}"
-        tag = getTagByID('-'.join(chain(('option',), (word.lower() for word in findall(r'[a-z]+|[A-Z][a-z]*|[A-Z]+', name)))))
-        if tag.type == 'checkbox':
+    def configureTag(self, name: str, defaultValue: TagAttrValue) -> None:
+        valueType = type(defaultValue)
+        value = self.get(name, defaultValue)  # Read from database
+        assert isinstance(value, valueType), f"Incorrect type for option {name}: {type(value).__name__}, expected {valueType.__name__}"
+        tagID = '-'.join(chain(('option',), (word.lower() for word in findall(r'[a-z]+|[A-Z][a-z]*|[A-Z]+', name))))
+        tag = getTagByID(tagID)
+        assert tag.tagName.lower() == 'input', tag.tagName
+        if name == 'taskName':
+            exclude = r'''\/:\\?*'<">&\|'''  # ToDo: Generate title and placeholder too
+            setAttr(tag, 'pattern', rf'[^{exclude}\s][^{exclude}]+[^{exclude}\s]')  # Also avoid whitespace at start and end
+        args = self.TAG_ARGS[valueType]
+        for (attr, attrValue) in args.items():
+            setAttr(tag, attr, attrValue, onlyIfAbsent = True)  # Set <input> tag attributes according to value type
+        inputType = args.get('type', 'text')
+        setAttr(tag, 'type', inputType, onlyIfAbsent = True)  # Make sure <input type="text"> is always specified explicitly
+        if inputType == 'text':
+            setAttr(tag, 'maxlength', 4, onlyIfAbsent = True)
+        if inputType == 'checkbox':
             tag.checked = value
         else:
             tag.value = value
-        log(f"Options.configureTag({name}, {defaultValue!r}): {type(tag).__name__} {tag.type} {tag.value!r}")
+        log(f"Options.configureTag({name}, {defaultValue!r}): {type(tag).__name__} {tag.getAttribute('type')} {tag.getAttribute('inputmode')} {tag.checked if inputType == 'checkbox' else tag.value!r}")
 
         @when('change', tag)  # type: ignore[untyped-decorator]
         async def update(e: Event) -> None:
-            newValue: Options.OptionType = e.target.value
+            newValue: TagAttrValue = e.target.value
             assert isinstance(newValue, str), newValue
-            if isinstance(defaultValue, str):
+            if valueType is str:
                 if name == 'taskName' and not newValue:
-                    newValue = generate_slug(2)
-            elif newValue:  # int | float | bool
-                newValue = type(defaultValue)(newValue)
-            else:
-                newValue = Options.DEFAULT_VALUES[type(defaultValue)]
+                    newValue = generate_slug(2)  # Provide random task name to save user from extra thinking
+            elif valueType is bool:
+                newValue = tag.checked
+            elif newValue:  # int or float from non-empty string
+                newValue = valueType(newValue)
+            else:  # empty string
+                newValue = defaultValue
             log(f"Options.update({name}, {newValue!r})")
-            self[name] = newValue
+            self[name] = newValue  # Save to database
+            log(f"Options[{name}] = {self.get(name)!r}")
+            tag.value = newValue  # Write processed value back to the input tag
             if name in ('maxPreviewWidth', 'maxPreviewHeight'):  # pylint: disable=use-set-for-membership
                 self.updateStyle()
-            await self.sync()
+            await self.sync()  # Make sure database is really updated
 
     def updateStyle(self) -> None:
         self.styleSheet.replaceSync(f'''
@@ -196,18 +235,18 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
 
     def __getattribute__(self, name: str) -> Any:
         defaultValue = super().__getattribute__(name)
-        #log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, Options.OptionType)})")
-        if not isinstance(defaultValue, Options.OptionType):
+        #log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, TagAttrValueType)})")
+        if not isinstance(defaultValue, TagAttrValue):
             return defaultValue  # Not an option field
         ret = self.get(name, None)
         log(f"Options.get({name}) = {ret!r}")
         return defaultValue if ret is None else ret
 
-    def __setattr__(self, name: str, value: Options.OptionType) -> None:
+    def __setattr__(self, name: str, value: TagAttrValue) -> None:
         try:
             defaultValue = super().__getattribute__(name)
-            #log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, Options.OptionType)})")
-            if isinstance(defaultValue, Options.OptionType):
+            #log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, TagAttrValueType)})")
+            if isinstance(defaultValue, TagAttrValue):
                 if isinstance(defaultValue, float):
                     assert isinstance(value, int | float), f"Incorrect type for option {name}: {type(value).__name__}, expected int or float"
                 else:

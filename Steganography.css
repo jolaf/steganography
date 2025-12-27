@@ -21,6 +21,16 @@ a {
     color: inherit;
 }
 
+input[type="text"]:invalid,
+input[type="text"]:user-invalid
+{
+    background-color: pink;
+}
+
+#options span {
+    font-size: small;
+}
+
 #versions span {
     font-size: x-small;
 }
