@@ -21,18 +21,46 @@ a {
     color: inherit;
 }
 
+#log span {
+    display: block;
+    font-size: x-small;
+    font-style: italic;
+}
+
+#log.error {
+    display: block;
+    width: fit-content;
+    background: pink;
+    border: 2px solid red;
+    padding: 1rem;
+}
+
 input[type="text"]:invalid,
 input[type="text"]:user-invalid
 {
     background-color: pink;
 }
 
-#options span {
-    font-size: small;
+#options {
+    width: fit-content;
+    margin-bottom: 3rem;
 }
 
-#versions span {
+#options > * {
+    display: flex;
+    align-items: baseline;
+}
+
+#options span {
     font-size: x-small;
+}
+
+#options > :nth-last-child(2) {
+    float: left;
+}
+
+#options-reset {
+    float: right;
 }
 
 .image-title {
@@ -66,4 +94,13 @@ input[type="text"]:user-invalid
 
 .image-description {
     font-size: small;
+}
+
+.py-error {
+    display: none;
+    color: black !important;
+    background: pink !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
 }

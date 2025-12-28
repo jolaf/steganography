@@ -1,0 +1,21 @@
+Global error handling
+Save source image to Storage
+Task name (default: date_time)
+Input image (upload, regenerate)
+Lock image (upload, remove)
+Key image (upload, remove)
+Lock result (download)
+Key result (download)
+Test (download) - make it with really two images overlaid!
+Move loading log to the bottom
+Check Rigging HTML for ideas
+Add "Download All" button
+Make upload button translatable
+Employ gettext
+Fix 100% height
+
+const fileInput = document.querySelector('input[type="file"]');
+const existingFile = new File(['content'], 'example.txt', { type: 'text/plain' }); // Or your existing File object
+const dataTransfer = new DataTransfer();
+dataTransfer.items.add(existingFile);
+fileInput.files = dataTransfer.files; // Assigns the FileList
