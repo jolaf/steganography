@@ -3,18 +3,22 @@ from __future__ import annotations
 
 print("[python] Loading app")
 
-from asyncio import create_task, get_running_loop, sleep
+from asyncio import create_task, get_running_loop, sleep, AbstractEventLoop
+from collections.abc import Iterable, Mapping  # noqa: TC003
 from enum import Enum
 from itertools import chain
 from re import findall, split
 import sys
 from sys import version as pythonVersion
 from traceback import extract_tb
+from types import TracebackType  # noqa: TC003
 from typing import cast, Any, ClassVar, TYPE_CHECKING
 
 from coolname import generate_slug  # type: ignore[attr-defined]
 
-from pyscript import document, when, window, storage, Storage  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
+from beartype import beartype as typechecked
+
+from pyscript import config as pyscriptConfig, when, storage, Storage  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 from pyscript.web import page  # type: ignore[import-not-found]  # pylint: disable=import-error, no-name-in-module
 from pyscript.ffi import to_js  # type: ignore[import-not-found]  # pylint: disable=import-error, no-name-in-module
 
@@ -26,72 +30,91 @@ except ImportError:
     except ImportError:
         pyscriptVersion = next(tag.src for tag in page['script']).split('/')[-2] or "UNKNOWN"
 
+from js import CSSStyleSheet, DataTransfer, Event as JSEvent  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module, wrong-import-order
+
+if TYPE_CHECKING:
+    # Workarounds for mypy, as stuff cannot be imported from PyScript when not in a browser
+    Element = Any
+    def newBlob(_blobParts: Iterable[Any], _options: Any) -> Blob:
+        pass
+    def newFile(_fileBits: Iterable[Any], _fileName: str, _options: Any) -> File:
+        pass
+    def newUint8Array(_bytes: bytes) -> Uint8Array:
+        pass
+    def createObjectURL(_file: File) -> str:
+        return ''
+    def revokeObjectURL(_url: str) -> None:
+        pass
+    adoptedStyleSheets = Any
+else:
+    from pyscript import document  # type: ignore[attr-defined]
+    from pyscript.web import Element  # type: ignore[import-not-found]
+    from js import Blob, File, Uint8Array, URL  # type: ignore[attr-defined]
+
+    # We'll redefine these classes to Any below, so we have to save all needed references
+    newBlob = Blob.new
+    newFile = File.new
+    newUint8Array = Uint8Array.new
+
+    # Simplifying addressing to JS functions
+    createObjectURL = URL.createObjectURL
+    revokeObjectURL = URL.revokeObjectURL
+    del URL  # We won't need it anymore
+    adoptedStyleSheets = document.adoptedStyleSheets
+    del document  # We won't need it anymore
+
+# JS types that don't work as runtime type annotations
+Blob = Any
+File = Any
+Uint8Array = Any
+Event = Any  # Neither PyScript nor JS versions work as runtime type annotation
+
 try:
     from pyodide_js import version as pyodideVersion  # type: ignore[import-not-found]
 except ImportError:
     pyodideVersion = "UNKNOWN"
 
-from js import CSSStyleSheet, Event as JSEvent  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module, wrong-import-order
-
 from Steganography import getImageMode, imageToBytes, loadImage, processImage
-
-if TYPE_CHECKING:
-    from asyncio import AbstractEventLoop
-    from collections.abc import Mapping
-    from types import TracebackType
-
-    # Workarounds for mypy, as stuff cannot be imported from PyScript when not in a browser
-    Element = Any
-    Event = Any
-    File = Any
-    Blob = Any
-    Uint8Array = Any
-    def createObjectURL(_file: File) -> str: return ''  # pylint: disable=multiple-statements
-    def revokeObjectURL(_url: str) -> None: pass  # pylint: disable=multiple-statements
-    def getElementById(_id: str) -> Element: pass  # pylint: disable=multiple-statements
-    adoptedStyleSheets = Any
-else:
-    # Simplifying addressing to JS classes and functions
-    Blob = window.Blob
-    Uint8Array = window.Uint8Array
-    createObjectURL = window.URL.createObjectURL
-    revokeObjectURL = window.URL.revokeObjectURL
-    window = None  # For cleaner code: make sure all used fields are mentioned here
-    getElementById = document.getElementById  # Needed to use element.append(), as it is not supported by PyScript directly as of v2025.11.2
-    adoptedStyleSheets = document.adoptedStyleSheets
-    document = None  # For cleaner code: make sure all used fields are mentioned here
 
 TagAttrValue = str | int | float | bool
 
+# Event names
 CLICK = 'click'
 CHANGE = 'change'
 
-TEXT = 'text'
+TEXT = 'text'  # Shortcut for innerText attribute
 
+@typechecked
 def log(*args: Any) -> None:
-    message = ' '.join(args)
+    message = ' '.join(str(arg) for arg in args)
     print("[python]", message)
-    getElementById('log').append(message + '\n')  # We have to use getElementById() because append() is not supported by PyScript directly as of v2025.11.2
+    # noinspection PyProtectedMember
+    getTagByID('log')._dom_element.append(message + '\n')  # We have to use _dom_element because PyScript version of append() is not working with strings as of v2025.11.2  # noqa: SLF001  # pylint: disable=protected-access
     test = message.lower()
-    if 'error' in test or 'exception' in test:
+    if any(word in test for word in ('error', 'exception')):
         page['#log'][0].classes.add('error')
 
+@typechecked
 def getFileNameFromPath(path: str) -> str:
     # It looks like 'pathlib' and `os` modules fail to parse `C:\fakepath\` paths generated by browser when uploading files
     return split(r'[/\\]', path)[-1]
 
+@typechecked
 async def repaint() -> None:
     await sleep(0.1)  # Yield control to the browser so that repaint could happen
 
+@typechecked
 def createObjectURLFromBytes(byteArray: bytes | Uint8Array) -> str:
     if isinstance(byteArray, bytes):
-        byteArray = Uint8Array.new(byteArray)
-    blob = Blob.new([byteArray,], to_js({'type': 'image/png'}))  # to_js() converts Python dict into JS object
+        byteArray = newUint8Array(byteArray)
+    blob = newBlob([byteArray,], to_js({'type': 'image/png'}))  # to_js() converts Python dict into JS object
     return createObjectURL(blob)
 
-async def fileToByteArray(file: File) -> Uint8Array:
-    return Uint8Array.new(await file.arrayBuffer())
+@typechecked
+async def blobToByteArray(blob: Blob) -> Uint8Array:
+    return newUint8Array(await blob.arrayBuffer())
 
+@typechecked
 def getTagByID(tagID: str) -> Element:
     try:
         return page['#' + tagID][0]
@@ -99,16 +122,19 @@ def getTagByID(tagID: str) -> Element:
         log("ERROR at getTagByID(): No tag ID found:", tagID)
         raise
 
+@typechecked
 def hide(element: str | Element) -> None:
     if isinstance(element, str):
         element = getTagByID(element)
     element.classes.add('hidden')
 
+@typechecked
 def show(element: str | Element) -> None:
     if isinstance(element, str):
         element = getTagByID(element)
     element.classes.remove('hidden')
 
+@typechecked
 def getAttr(element: str | Element, attr: str) -> str:
     if isinstance(element, str):
         element = getTagByID(element)
@@ -116,6 +142,7 @@ def getAttr(element: str | Element, attr: str) -> str:
         return cast(str, element.textContent)
     return cast(str, element.getAttribute(attr))
 
+@typechecked
 def setAttr(element: str | Element, attr: str, value: TagAttrValue, onlyIfAbsent: bool = False) -> None:
     if isinstance(element, str):
         element = getTagByID(element)
@@ -125,16 +152,19 @@ def setAttr(element: str | Element, attr: str, value: TagAttrValue, onlyIfAbsent
     elif not onlyIfAbsent or not element.getAttribute(attr):
         element.setAttribute(attr, value)
 
-def removeChildren(element: str | Element) -> None:
-    if isinstance(element, str):
-        element = getTagByID(element)
-    element.innerHTML = ''
-
+@typechecked
 def dispatchEvent(element: str | Element, eventType: str) -> None:
     if isinstance(element, str):
         element = getTagByID(element)
     element.dispatchEvent(JSEvent.new(eventType))
 
+@typechecked
+class Stage(Enum):
+    SOURCE = 1
+    PROCESSED = 2
+    RESIZED = 3
+
+@typechecked
 class Options(Storage):  # type: ignore[misc, no-any-unimported]
     TAG_ARGS: ClassVar[Mapping[type[TagAttrValue], Mapping[str, TagAttrValue]]] = {
         str: {
@@ -157,7 +187,7 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         },
     }
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:  # Constructor is only called internally, so we don't know the args and don't care
         super().__init__(*args, **kwargs)
         #log("# Options: initializing default values")
 
@@ -193,15 +223,23 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         self.updateStyle()
 
         #log("# Options: configuring Reset button")
-
         @when(CLICK, '#options-reset')  # type: ignore[untyped-decorator]
-        def reset(_e: Event) -> None:
+        @typechecked
+        def resetEventHandler(_e: Event) -> None:
             for tag in tags:
                 if tag.type == 'checkbox':
                     tag.checked = tag.default
                 else:
                     tag.value = tag.default
                 dispatchEvent(tag, CHANGE)
+
+    @classmethod
+    async def init(cls) -> None:
+        global options  # noqa: PLW0603  # pylint: disable=global-statement
+        if not options:
+            options = await storage('steganography', storage_class = cls)
+        for stage in Stage:
+            ImageBlock(stage)
 
     def configureTag(self, name: str, defaultValue: TagAttrValue) -> Element:
         valueType = type(defaultValue)
@@ -228,7 +266,8 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         #log(f"Options.configureTag({name}, {defaultValue!r}): {type(tag).__name__} {tag.getAttribute('type')} {tag.getAttribute('inputmode')} {tag.checked if inputType == 'checkbox' else tag.value!r}")
 
         @when(CHANGE, tag)  # type: ignore[untyped-decorator]
-        async def update(_e: Event) -> None:
+        @typechecked
+        async def changeEventHandler(_e: Event) -> None:
             newValue: TagAttrValue = tag.value
             if valueType is str:
                 if name == 'taskName' and not newValue:
@@ -257,6 +296,12 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
 }}
         ''')
 
+    def saveFile(self, name: str, data: bytes | Uint8Array | None) -> None:
+        self['file-' + name] = bytearray(data or b'')
+
+    def loadFile(self, name: str) -> bytearray | None:
+        return cast(bytearray | None, self.get('file-' + name))
+
     def __getattribute__(self, name: str) -> Any:
         defaultValue = super().__getattribute__(name)
         #log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, TagAttrValueType)})")
@@ -266,7 +311,7 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         #log(f"Options.get({name}) = {ret!r}")
         return defaultValue if ret is None else ret
 
-    def __setattr__(self, name: str, value: TagAttrValue) -> None:
+    def __setattr__(self, name: str, value: Any) -> None:
         try:
             defaultValue = super().__getattribute__(name)
             #log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, TagAttrValueType)})")
@@ -284,19 +329,9 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         #log(f"Options.__setattr__({name}) = {value!r}")
         super().__setattr__(name, value)
 
-    @classmethod
-    async def init(cls) -> None:
-        global options  # noqa: PLW0603  # pylint: disable=global-statement
-        if not options:
-            options = await storage('steganography', storage_class = cls)
-
 options: Options | None = None  # ToDo: Do we really need it to be global?
 
-class Stage(Enum):
-    SOURCE = 1
-    PROCESSED = 2
-    RESIZED = 3
-
+@typechecked
 class ImageBlock:
     ID_PREFIX: ClassVar[str] = 'image-'
 
@@ -323,6 +358,14 @@ class ImageBlock:
     def setAttr(self, name: str, attr: str, value: str) -> None:
         setAttr(self.getTag(name), attr, value)
 
+    def saveFile(self, byteArray: bytes | Uint8Array | None) -> None:
+        assert options
+        options.saveFile(self.name, byteArray)
+
+    def loadFile(self) -> bytearray | None:
+        assert options
+        return options.loadFile(self.name)
+
     def display(self, byteArray: bytes | Uint8Array | None, description: str = "") -> None:
         if src := self.getAttr('display', 'src'):
             revokeObjectURL(src)
@@ -341,6 +384,7 @@ class ImageBlock:
             self.setAttr('download-link', 'href', url)
             self.show('display-block')
             self.show('download-block')
+            self.saveFile(byteArray)
 
     def render(self) -> None:  # ToDo: Should this be inlined?
         # Create DOM tag
@@ -365,13 +409,12 @@ class ImageBlock:
         else:
             self.hide('upload-block')
 
-        show(blockID)
-
         uploadTag = self.getTag('upload')
 
         @when(CHANGE, uploadTag)  # type: ignore[untyped-decorator]
+        @typechecked
         async def uploadEventHandler(_e: Event) -> None:
-            removeChildren('generated')
+            #removeChildren('generated')
             if fileName := uploadTag.value:
                 fileName = getFileNameFromPath(fileName)
                 self.setAttr('download-link', 'download', fileName)
@@ -380,7 +423,7 @@ class ImageBlock:
                 await repaint()
                 try:
                     file = uploadTag.files.item(0)  # ToDo: Generate test event?
-                    byteArray = await fileToByteArray(file)
+                    byteArray = await blobToByteArray(file)
                     image = loadImage(byteArray.to_bytes())
                 except Exception as ex:  # noqa : BLE001
                     self.display(None, f"Error loading image: {ex}")
@@ -398,6 +441,16 @@ class ImageBlock:
             else:
                 self.display(None)
 
+        # Load stored image
+        if byteArray := self.loadFile():
+            file = newFile([newUint8Array(byteArray),], 'test.name', to_js({'type': 'image/png'}))  # to_js() converts Python dict into JS object
+            dataTransfer = DataTransfer.new()
+            dataTransfer.items.add(file)
+            uploadTag.files = dataTransfer.files
+            #dispatchEvent(uploadTag, CHANGE)
+            show(blockID)
+
+@typechecked
 def exceptionHandler(source: str, exceptionType: type[BaseException | None] | None = None, exception: BaseException | None = None, traceback: TracebackType | None = None) -> None:
     if exceptionType is None:
         exceptionType = type(exception)
@@ -407,28 +460,32 @@ def exceptionHandler(source: str, exceptionType: type[BaseException | None] | No
     tracebackStr = '\n' + '\n'.join(line for line in '\n'.join(extract_tb(traceback).format()).splitlines() if line.strip()) if traceback else ''
     log(f"\nERROR Uncaught exception in {source}, type {exceptionType.__name__}: {exception}{tracebackStr}\n\nPlease make a screenshot and report it to @jolaf at Telegram or VK or to vmzakhar@gmail.com. Thank you!\n")
 
+@typechecked
 def mainExceptionHandler(exceptionType: type[BaseException] | None = None, exception: BaseException | None = None, traceback: TracebackType | None = None) -> None:
     exceptionHandler("main thread", exceptionType, exception, traceback)
 
+@typechecked
 def loopExceptionHandler(_loop: AbstractEventLoop, context: dict[str, Any]) -> None:
     exceptionHandler("async loop", exception = context.get('exception'))
 
+@typechecked
 async def main() -> None:
     log("Starting app")
     log("PyScript v" + pyscriptVersion)
     log("Pyodide v" + pyodideVersion)
     log("Python v" + pythonVersion)
+    log("PyScript config:", pyscriptConfig)
     log("Configuring app")
+    sys.excepthook = mainExceptionHandler
+    get_running_loop().set_exception_handler(loopExceptionHandler)
     await Options.init()
-    ImageBlock(Stage.SOURCE)
+    #ImageBlock(Stage.SOURCE)
     hide('log')
     show('content')
     log("Running app")
     #raise Exception("Booo in loop!")
 
 if __name__ == '__main__':
-    sys.excepthook = mainExceptionHandler
-    get_running_loop().set_exception_handler(loopExceptionHandler)
     create_task(main())  # noqa: RUF006
     #raise Exception("Booo in main!")
 

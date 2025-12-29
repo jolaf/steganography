@@ -7,15 +7,15 @@ from mimetypes import guess_type
 from random import randint
 from re import split
 from sys import argv, exit as sysExit, stderr
-from typing import cast, Any, IO, TYPE_CHECKING
+from typing import Any, IO
+
+from beartype import beartype as typechecked
 
 from PIL.Image import open as imageOpen, Dither, Image as Image, Resampling  # noqa: PLC0414
+# noinspection PyProtectedMember
+from PIL._typing import StrOrBytesPath
 
-if TYPE_CHECKING:
-    # noinspection PyProtectedMember
-    from PIL._typing import StrOrBytesPath
-    ImagePath = StrOrBytesPath | IO[bytes]
-    Option = bool | str | int | tuple[int, int]
+ImagePath = StrOrBytesPath | IO[bytes] | BytesIO  # The last one is needed by beartype though it's a bug
 
 IMAGE_MODE_DESCRIPTIONS: Mapping[str, str] = {
     '1': '1-bit B&W',
@@ -40,25 +40,30 @@ IMAGE_MODE_DESCRIPTIONS: Mapping[str, str] = {
     'YCbCr': '8-bit YCbCr',
 }
 
+@typechecked
 def log(*args: Any) -> None:
     print(*args)
 
+@typechecked
 def error(*args: Any) -> None:
     print("ERROR:", *args, file = stderr)
     sysExit(1)
 
+@typechecked
 def loadImage(inp: ImagePath | bytes) -> Image:
     #log(f"Image: {image.format} {image.mode} {image.width}x{image.height}")
     return imageOpen(BytesIO(inp) if isinstance(inp, bytes) else inp)
 
+@typechecked
 def getImageMode(image: Image) -> str:
     return IMAGE_MODE_DESCRIPTIONS.get(image.mode, image.mode)
 
-def processImage(image: Image, **options: Option) -> Image:
+@typechecked
+def processImage(image: Image, **options: Any) -> Image:
     processed = grayscale = image.convert("L")  # 8-bit grayscale
     if (resize := options.get('resize')) not in (None, 1):  # size tuple or int factor
         assert resize
-        r = cast(tuple[int, int], tuple(resize) if isinstance(resize, Iterable) else tuple(round(d * resize) for d in image.size))
+        r = tuple(resize) if isinstance(resize, Iterable) else tuple(round(d * resize) for d in image.size)
         log(r)
         processed = processed.resize(r, Resampling.BICUBIC)
     if options.get('rotate'):  # bool
@@ -67,6 +72,7 @@ def processImage(image: Image, **options: Option) -> Image:
         return image
     return processed.convert("1", dither = Dither.FLOYDSTEINBERG if options.get('dither') else Dither.NONE)  # 1-bit B&W
 
+@typechecked
 def getImageFormatFromExtension(path: ImagePath) -> str:
     try:
         (mimeType, _encoding) = guess_type(path)  # type: ignore[arg-type]
@@ -76,15 +82,18 @@ def getImageFormatFromExtension(path: ImagePath) -> str:
         pass  # log("Exception:", e)
     return 'PNG'
 
+@typechecked
 def saveImage(image: Image, path: ImagePath) -> None:
     image.save(path, getImageFormatFromExtension(path), optimize = True,
                transparency = 1 if image.mode == '1' else None)  # White is transparent
 
+@typechecked
 def imageToBytes(image: Image) -> bytes:
     stream = BytesIO()
     saveImage(image, stream)
     return stream.getvalue()
 
+@typechecked
 def main(*args: str) -> None:
     parser = ArgumentParser()
     parser.add_argument('-r', '--rotate', help = 'rotate image to a random angle', action = 'store_true')

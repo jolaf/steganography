@@ -1,4 +1,4 @@
-packages = ["pillow", "coolname"]
+packages = ["pillow", "coolname", "beartype"]
 
 [files]
 "./script.py" = ""
