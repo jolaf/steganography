@@ -1,35 +1,28 @@
 <!DOCTYPE html>
 <html lang="_(en)">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Steganography</title>
+  <meta charset="utf-8">
+  <meta name="author" content="Vasily Zakharov (vmzakhar@gmail.com)">
+  <meta name="keywords" content="steganography larp">
+  <meta name="description" content="Applied visual cryptography for Larp">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="apple-mobile-web-app-title" content="Steganography">
+  <meta name="application-name" content="Steganography">
+  <meta name="msapplication-TileColor" content="burlywood">
+  <meta name="theme-color" content="burlywood">
+  <link rel="icon" type="image/png" sizes="96x96" href="images/favicon-96x96.png">
+  <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+  <link rel="shortcut icon" href="images/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
+  <link rel="manifest" href="images/site.webmanifest">
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.11.2/core.css">
   <link rel="stylesheet" href="script.css">
   <script type="module" src="https://pyscript.net/releases/2025.11.2/core.js"></script>
+  <script type="module" src="script.js"></script>
 </head>
 <body>
 <script type="py" src="script.py" config="pyscript.toml" target="log"></script>
-<script type="module">
-  const target = document.getElementById('log');
-
-  function log(message) {
-      console.log("[pyscript] " + message);
-      target.append(message + '\n');
-  }
-
-  addEventListener('py:progress', ({ detail }) => {
-      log(detail);
-  });
-
-  addEventListener('py:ready', () => {
-      log("Starting PyScript");
-  });
-
-  addEventListener('py:done', () => {
-      log("Started PyScript");
-  });
-</script>
 <div id="all">
   <h1>Steganography</h1>
   <pre id="log">Loading Python, please wait...
@@ -122,17 +115,17 @@
     <div id="template" class="image-block hidden">
       <h2 class="image-title"></h2>
       <div class="image-upload-block">
+        <button class="image-remove hidden">Remove</button>
         <input class="image-upload" title="Click to upload a file to process" type="file" accept="image/*">
       </div>
-      <label class="image-description"></label>
+      <label class="image-description hidden"></label>
       <div class="image-display-block hidden">
         <a class="image-display-link" title="Click for full screen preview" target="_blank" href="">
           <img class="image-display" alt="preview" src=".">
         </a>
-      </div>
-      <div class="image-download-block hidden">
+        <br>
         <a class="image-download-link" title="Click to download to your computer" download="" href="">
-          <button class="image-download ">Download</button>
+          <button class="image-download">Download</button>
           <label class="image-name"></label>
         </a>
       </div>

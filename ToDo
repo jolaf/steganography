@@ -1,15 +1,13 @@
-Save source image to Storage (provide file names too) (and mimetypes too?)
-Fix mime types when downloading source?
 Regenerate at options change
 Lock image (upload, remove)
 Key image (upload, remove)
 Lock result
 Key result
-Test (no download!) - make it with really two images overlaid!
+Test
 Check Rigging HTML for ideas
 Add "Download All" button
 Make upload button translatable
 Employ gettext
 Fix 100% height
-Convert uploadEventHandler() into async def process() ?
 Reduce width of text input fields
+Create build.py

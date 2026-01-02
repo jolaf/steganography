@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from io import BytesIO
 from mimetypes import guess_type
 from random import randint
 from re import split
 from sys import argv, exit as sysExit, stderr
-from typing import Any, IO
+from typing import cast, Any, Final, IO
 
-from beartype import beartype as typechecked
+try:
+    from beartype import beartype as typechecked
+except ImportError:
+    print("WARNING: beartype is not available, typing is unchecked")
+    def typechecked(func: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[no-redef]
+        return func
 
 from PIL.Image import open as imageOpen, Dither, Image as Image, Resampling  # noqa: PLC0414
 # noinspection PyProtectedMember
@@ -17,7 +22,7 @@ from PIL._typing import StrOrBytesPath
 
 ImagePath = StrOrBytesPath | IO[bytes] | BytesIO  # The last one is needed by beartype though it's a bug
 
-IMAGE_MODE_DESCRIPTIONS: Mapping[str, str] = {
+IMAGE_MODE_DESCRIPTIONS: Final[Mapping[str, str]] = {
     '1': '1-bit B&W',
     'CMYK': '8-bit CMYK',
     'F': '32-bit Float',
@@ -50,27 +55,38 @@ def error(*args: Any) -> None:
     sysExit(1)
 
 @typechecked
-def loadImage(inp: ImagePath | bytes) -> Image:
+def loadImage(inp: ImagePath | bytes, fileName: str | None = None) -> Image:
     #log(f"Image: {image.format} {image.mode} {image.width}x{image.height}")
-    return imageOpen(BytesIO(inp) if isinstance(inp, bytes) else inp)
+    image = imageOpen(BytesIO(inp) if isinstance(inp, bytes) else inp)
+    if not image.format:
+        image.format = getImageFormatFromExtension(fileName or inp)
+    return image
+
+@typechecked
+def saveImage(image: Image, path: ImagePath) -> None:
+    image.save(path, getImageFormatFromExtension(path), optimize = True,
+               transparency = 1 if image.mode == '1' else None)  # White is transparent
+
+@typechecked
+def imageToBytes(image: Image) -> bytes:
+    stream = BytesIO()
+    saveImage(image, stream)
+    return stream.getvalue()
 
 @typechecked
 def getImageMode(image: Image) -> str:
     return IMAGE_MODE_DESCRIPTIONS.get(image.mode, image.mode)
 
 @typechecked
-def processImage(image: Image, **options: Any) -> Image:
-    processed = grayscale = image.convert("L")  # 8-bit grayscale
-    if (resize := options.get('resize')) not in (None, 1):  # size tuple or int factor
-        assert resize
-        r = tuple(resize) if isinstance(resize, Iterable) else tuple(round(d * resize) for d in image.size)
-        log(r)
-        processed = processed.resize(r, Resampling.BICUBIC)
-    if options.get('rotate'):  # bool
-        processed = processed.rotate(randint(0, 359), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background  # noqa: S311
-    if image.mode == '1' and processed is grayscale:  # No changes were made
-        return image
-    return processed.convert("1", dither = Dither.FLOYDSTEINBERG if options.get('dither') else Dither.NONE)  # 1-bit B&W
+def getMimeTypeFromImage(image: Image) -> str:
+    if image.format:
+        try:
+            (mimeType, _encoding) = guess_type('image.' + image.format.lower())
+            if mimeType:
+                return mimeType
+        except Exception:  # noqa: BLE001, S110
+            pass  # log("Exception:", e)
+    return 'image/png'
 
 @typechecked
 def getImageFormatFromExtension(path: ImagePath) -> str:
@@ -83,15 +99,47 @@ def getImageFormatFromExtension(path: ImagePath) -> str:
     return 'PNG'
 
 @typechecked
-def saveImage(image: Image, path: ImagePath) -> None:
-    image.save(path, getImageFormatFromExtension(path), optimize = True,
-               transparency = 1 if image.mode == '1' else None)  # White is transparent
+def processImage(image: Image, **options: Any) -> Image:
+    # Checks options:
+    # - resize: int | float | tuple[int | None, int | None]
+    # - rotate: bool
+    # - dither: bool
+    processed = grayscale = image.convert("L")  # 8-bit grayscale
+    if (resize := cast(int | tuple[int | None, int | None], options.get('resize'))) not in (None, 0, 1, (), (None, None)):  # int size tuple or float factor
+        assert resize
+        if isinstance(resize, Iterable):
+            assert len(resize) == 2 and all(r is None or isinstance(r, int) for r in resize) and any(isinstance(r, int) for r in resize), f"Bad resize options: {resize!r}"  # noqa: PT018
+            for r in resize:
+                if r is not None:
+                    assert isinstance(r, int) and r > 0, f"Bad resize options: {resize!r}"  # noqa: PT018
+            if resize[0] is None:
+                assert resize[1]
+                resize = (round(float(image.size[0]) * resize[1] / image.size[1]), resize[1])
+            elif resize[1] is None:
+                assert resize[0]
+                resize = (resize[0], round(float(image.size[1]) * resize[0] / image.size[0]))
+        else:  # resize is factor
+            assert isinstance(resize, (int, float)), f"Bad resize options: {resize!r}"
+            resize = tuple(round(d * resize) for d in image.size)  # type: ignore[assignment]
+        assert isinstance(resize, tuple) and len(resize) == 2 and all(isinstance(r, int) for r in resize), repr(resize) # noqa: PT018
+        processed = processed.resize(resize, Resampling.BICUBIC)
+    if options.get('rotate'):  # bool. # ToDo: Should we save rotate angle somewhere?
+        processed = processed.rotate(randint(1, 359), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background  # noqa: S311
+    if image.mode == '1' and processed is grayscale:  # No changes were made
+        return image
+    return processed.convert('1', dither = Dither.FLOYDSTEINBERG if options.get('dither') else Dither.NONE)  # 1-bit B&W
 
 @typechecked
-def imageToBytes(image: Image) -> bytes:
-    stream = BytesIO()
-    saveImage(image, stream)
-    return stream.getvalue()
+def synthesize(source: Image, lock: Image | None, key: Image | None, **options: Any) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
+    # Uses options:
+    # - smooth: bool
+    return Image()
+
+@typechecked
+def testOverlay(lock: Image, key: Image, **options: Any) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
+    # Uses options:
+    # - border: bool
+    return Image()
 
 @typechecked
 def main(*args: str) -> None:

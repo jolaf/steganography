@@ -1,10 +1,12 @@
 # ruff: noqa: E402  # pylint: disable=wrong-import-position
+# Note: this module is PyScript-only, it won't work outside of browser
 from __future__ import annotations
 
 print("[python] Loading app")
 
 from asyncio import create_task, get_running_loop, sleep, AbstractEventLoop
-from collections.abc import Iterable, Mapping  # noqa: TC003
+from collections.abc import Callable, Iterable, Mapping  # noqa: TC003
+from contextlib import suppress
 from enum import Enum
 from itertools import chain
 from re import findall, split
@@ -14,9 +16,21 @@ from traceback import extract_tb
 from types import TracebackType  # noqa: TC003
 from typing import cast, Any, ClassVar, TYPE_CHECKING
 
-from coolname import generate_slug  # type: ignore[attr-defined]
+try:
+    from coolname import generate_slug  # type: ignore[attr-defined]
+    def getRandomName() -> str:
+        return cast(str, generate_slug(2))
+except ImportError:
+    print("[python] WARNING: coolname is not available, using 'steganography' as a sample name")
+    def getRandomName() -> str:
+        return 'steganography'
 
-from beartype import beartype as typechecked
+try:
+    from beartype import beartype as typechecked
+except ImportError:
+    print("[python] WARNING: beartype is not available, typing is unchecked")
+    def typechecked(func: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[no-redef]
+        return func
 
 from pyscript import config as pyscriptConfig, when, storage, Storage  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
 from pyscript.web import page  # type: ignore[import-not-found]  # pylint: disable=import-error, no-name-in-module
@@ -30,16 +44,18 @@ except ImportError:
     except ImportError:
         pyscriptVersion = next(tag.src for tag in page['script']).split('/')[-2] or "UNKNOWN"
 
-from js import CSSStyleSheet, DataTransfer, Event as JSEvent  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module, wrong-import-order
-
 if TYPE_CHECKING:
     # Workarounds for mypy, as stuff cannot be imported from PyScript when not in a browser
-    Element = Any
+    type Element = Any
+    def newCSSStyleSheet() -> CSSStyleSheet:
+        pass
     def newBlob(_blobParts: Iterable[Any], _options: Any) -> Blob:
         pass
     def newFile(_fileBits: Iterable[Any], _fileName: str, _options: Any) -> File:
         pass
     def newUint8Array(_bytes: bytes) -> Uint8Array:
+        pass
+    def newEvent(_name: str) -> Event:
         pass
     def createObjectURL(_file: File) -> str:
         return ''
@@ -49,12 +65,14 @@ if TYPE_CHECKING:
 else:
     from pyscript import document  # type: ignore[attr-defined]
     from pyscript.web import Element  # type: ignore[import-not-found]
-    from js import Blob, File, Uint8Array, URL  # type: ignore[attr-defined]
+    from js import CSSStyleSheet, Blob, Event, File, Uint8Array, URL  # type: ignore[attr-defined]
 
     # We'll redefine these classes to Any below, so we have to save all needed references
+    newCSSStyleSheet = CSSStyleSheet.new
     newBlob = Blob.new
     newFile = File.new
     newUint8Array = Uint8Array.new
+    newEvent = Event.new
 
     # Simplifying addressing to JS functions
     createObjectURL = URL.createObjectURL
@@ -64,6 +82,7 @@ else:
     del document  # We won't need it anymore
 
 # JS types that don't work as runtime type annotations
+CSSStyleSheet = Any
 Blob = Any
 File = Any
 Uint8Array = Any
@@ -74,7 +93,7 @@ try:
 except ImportError:
     pyodideVersion = "UNKNOWN"
 
-from Steganography import getImageMode, imageToBytes, loadImage, processImage
+from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, processImage, synthesize, testOverlay, Image
 
 TagAttrValue = str | int | float | bool
 
@@ -88,11 +107,12 @@ TEXT = 'text'  # Shortcut for innerText attribute
 def log(*args: Any) -> None:
     message = ' '.join(str(arg) for arg in args)
     print("[python]", message)
+    logTag = getTagByID('log')
     # noinspection PyProtectedMember
-    getTagByID('log')._dom_element.append(message + '\n')  # We have to use _dom_element because PyScript version of append() is not working with strings as of v2025.11.2  # noqa: SLF001  # pylint: disable=protected-access
+    logTag._dom_element.append(message + '\n')  # We have to use _dom_element because PyScript version of append() is not working with strings as of v2025.11.2  # noqa: SLF001  # pylint: disable=protected-access
     test = message.lower()
     if any(word in test for word in ('error', 'exception')):
-        page['#log'][0].classes.add('error')
+        logTag.classes.add('error')
 
 @typechecked
 def getFileNameFromPath(path: str) -> str:
@@ -104,15 +124,15 @@ async def repaint() -> None:
     await sleep(0.1)  # Yield control to the browser so that repaint could happen
 
 @typechecked
-def createObjectURLFromBytes(byteArray: bytes | Uint8Array) -> str:
+def createObjectURLFromBytes(byteArray: bytes, mimeType: str) -> str:
     if isinstance(byteArray, bytes):
         byteArray = newUint8Array(byteArray)
-    blob = newBlob([byteArray,], to_js({'type': 'image/png'}))  # to_js() converts Python dict into JS object
+    blob = newBlob([byteArray,], to_js({'type': mimeType}))  # to_js() converts Python dict into JS object
     return createObjectURL(blob)
 
 @typechecked
-async def blobToByteArray(blob: Blob) -> Uint8Array:
-    return newUint8Array(await blob.arrayBuffer())
+async def blobToBytes(blob: Blob) -> bytes:
+    return cast(bytes, (await blob.arrayBuffer()).to_bytes())
 
 @typechecked
 def getTagByID(tagID: str) -> Element:
@@ -156,14 +176,9 @@ def setAttr(element: str | Element, attr: str, value: TagAttrValue, onlyIfAbsent
 def dispatchEvent(element: str | Element, eventType: str) -> None:
     if isinstance(element, str):
         element = getTagByID(element)
-    element.dispatchEvent(JSEvent.new(eventType))
+    element.dispatchEvent(newEvent(eventType))
 
-@typechecked
-class Stage(Enum):
-    SOURCE = 1
-    PROCESSED = 2
-    RESIZED = 3
-
+# noinspection PyRedundantParentheses
 @typechecked
 class Options(Storage):  # type: ignore[misc, no-any-unimported]
     TAG_ARGS: ClassVar[Mapping[type[TagAttrValue], Mapping[str, TagAttrValue]]] = {
@@ -218,7 +233,7 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
                 tags.append(self.configureTag(name, defaultValue))
 
         #log("# Options: configuring stylesheet to adjust with options")
-        self.styleSheet = CSSStyleSheet.new()
+        self.styleSheet = newCSSStyleSheet()
         adoptedStyleSheets.push(self.styleSheet)
         self.updateStyle()
 
@@ -232,14 +247,6 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
                 else:
                     tag.value = tag.default
                 dispatchEvent(tag, CHANGE)
-
-    @classmethod
-    async def init(cls) -> None:
-        global options  # noqa: PLW0603  # pylint: disable=global-statement
-        if not options:
-            options = await storage('steganography', storage_class = cls)
-        for stage in Stage:
-            ImageBlock(stage)
 
     def configureTag(self, name: str, defaultValue: TagAttrValue) -> Element:
         valueType = type(defaultValue)
@@ -271,7 +278,7 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
             newValue: TagAttrValue = tag.value
             if valueType is str:
                 if name == 'taskName' and not newValue:
-                    newValue = generate_slug(2)  # Provide random task name to save user from extra thinking
+                    newValue = getRandomName()  # Provide random task name to save user from extra thinking
             elif valueType is bool:
                 newValue = tag.checked
             elif newValue:  # int or float from non-empty string
@@ -296,11 +303,23 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
 }}
         ''')
 
-    def saveFile(self, name: str, data: bytes | Uint8Array | None) -> None:
-        self['file-' + name] = bytearray(data or b'')
+    def saveFile(self, name: str, data: bytes | None, fileName: str | None = None) -> None:
+        if data:
+            assert fileName
+            self[f'file-{name}'] = bytearray(data)
+            self[f'file-{name}-fileName'] = fileName
+        else:
+            self.delFile(name)
 
-    def loadFile(self, name: str) -> bytearray | None:
-        return cast(bytearray | None, self.get('file-' + name))
+    def loadFile(self, name: str) -> tuple[bytes | None, str | None]:
+        data: bytearray = self.get(f'file-{name}')
+        return (bytes(data) if data else None, self.get(f'file-{name}-fileName'))
+
+    def delFile(self, name: str) -> None:
+        with suppress(KeyError):
+            del self[f'file-{name}']
+        with suppress(KeyError):
+            del self[f'file-{name}-fileName']
 
     def __getattribute__(self, name: str) -> Any:
         defaultValue = super().__getattribute__(name)
@@ -329,16 +348,137 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         #log(f"Options.__setattr__({name}) = {value!r}")
         super().__setattr__(name, value)
 
-options: Options | None = None  # ToDo: Do we really need it to be global?
+@typechecked
+class Stage(Enum):
+    SOURCE = 1
+    LOCK = 2
+    KEY = 3
+    PROCESSED_SOURCE = 4
+    PROCESSED_LOCK = 5
+    PROCESSED_KEY = 6
+    GENERATED_LOCK = 7
+    GENERATED_KEY = 8
+    TEST = 9
 
 @typechecked
 class ImageBlock:
     ID_PREFIX: ClassVar[str] = 'image-'
 
+    DEPENDENCIES: ClassVar[Mapping[Stage, tuple[Stage, ...]]] = {
+        Stage.SOURCE: (Stage.PROCESSED_SOURCE,),
+        Stage.LOCK: (Stage.PROCESSED_LOCK,),
+        Stage.KEY: (Stage.PROCESSED_KEY,),
+        Stage.PROCESSED_SOURCE: (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
+        Stage.PROCESSED_LOCK: (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
+        Stage.PROCESSED_KEY: (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
+        Stage.GENERATED_LOCK: (Stage.TEST,),
+        Stage.GENERATED_KEY: (Stage.TEST,),
+        Stage.TEST: (),
+    }
+
+    ImageBlocks: ClassVar[dict[Stage, ImageBlock]] = {}
+
+    options: ClassVar[Options | None] = None
+
+    @classmethod
+    async def init(cls) -> None:
+        assert cls.options is None  # This method should only be called once
+        cls.options = await storage('steganography', storage_class = Options)
+        stage: Stage
+        for stage in Stage:
+            assert isinstance(stage, Stage)
+            cls.ImageBlocks[stage] = ImageBlock(stage)
+        for (stage, block) in cls.ImageBlocks.items():
+            block.dependencies = tuple(cls.ImageBlocks[s] for s in cls.DEPENDENCIES[stage])
+
+    @classmethod
+    async def process(cls, targetStages: Stage | Iterable[Stage], processFunction: Callable[..., Image | tuple[Image, ...]], sourceStages: Stage | Iterable[Stage]) -> None:
+        assert cls.options
+        sources = tuple(cls.ImageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
+        targets = tuple(cls.ImageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
+        for t in targets:
+            t.startOperation("processing")
+        await repaint()
+        try:
+            ret = processFunction(*(source.image for source in sources), **vars(cls.options))
+            if isinstance(ret, Image):
+                ret = (ret,)
+            assert len(ret) == len(targets), f"{processFunction.__name__} returned {len(ret)} images, expected {len(targets)}"
+            for (target, image) in zip(targets, ret, strict = True):
+                target.completeOperation(image, imageToBytes(image))
+        except Exception as ex:  # noqa : BLE001
+            for target in targets:
+                target.error("processing", ex)
+            return
+
+    @classmethod
+    async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
+        await cls.process(Stage.PROCESSED_SOURCE, processImage, Stage.SOURCE)
+        await cls.process(Stage.PROCESSED_LOCK, processImage, Stage.LOCK)
+        await cls.process(Stage.PROCESSED_KEY, processImage, Stage.KEY)
+        if not cls.ImageBlocks[Stage.PROCESSED_SOURCE].image:
+            return
+        await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY), synthesize, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY))
+        await cls.process(Stage.TEST, testOverlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY))  # ToDo: Somehow handle random rotation and location
+
     def __init__(self, stage: Stage) -> None:
         self.name = stage.name.lower()
-        self.isUpload = stage is Stage.SOURCE
-        self.render()
+        self.isUpload = (stage.value <= Stage.LOCK.value)  # pylint: disable=superfluous-parens
+        self.isProcessed = not self.isUpload and stage.value <= Stage.PROCESSED_KEY.value
+        self.isGenerated = not self.isUpload and not self.isProcessed
+        self.image: Image | None = None
+        self.fileName: str | None = None
+        self.dependencies: tuple[ImageBlock, ...] = ()
+
+        # Create DOM tag
+        block = getTagByID('template').clone(self.getTagID('block'))
+        getTagByID('uploads' if self.isUpload else 'generated').append(block)  # ToDo: Add third section: uploaded, processed, generated?
+
+        # Assign named IDs to all children that have image-* classes
+        for tag in block.find('*'):
+            for clas in tag.classes:
+                if clas.startswith(self.ID_PREFIX):
+                    tag.id = f'{clas}-{self.name}'
+                    break
+
+        # Adjust children attributes
+        self.setAttr('title', TEXT, self.name.capitalize() + " file")
+
+        if self.isUpload:
+            self.hide('description')
+            self.show('block')
+        else:
+            self.hide('upload-block')
+
+        (imageBytes, fileName) = self.loadFile()
+        if imageBytes:
+            try:
+                image = loadImage(imageBytes, fileName)
+            except Exception as ex:  # noqa : BLE001
+                self.error("loading", ex)
+                return
+            self.setFileName(fileName)
+            self.completeOperation(image, imageToBytes(image))
+        else:
+            self.setFileName()
+
+        if self.isUpload:
+            uploadTag = self.getTag('upload')
+
+            @when(CHANGE, uploadTag)  # type: ignore[untyped-decorator]
+            @typechecked
+            async def uploadEventHandler(_e: Event) -> None:
+                # noinspection PyShadowingNames
+                if fileName := uploadTag.value:
+                    await self.upload(getFileNameFromPath(fileName), uploadTag.files.item(0))
+                else:
+                    await self.upload()  # E.g. Esc was pressed at upload dialog
+
+            @when(CLICK, self.getTag('remove'))  # type: ignore[untyped-decorator]
+            @typechecked
+            async def removeEventHandler(_e: Event) -> None:
+                uploadTag.value = ''
+                self.remove()
 
     def getTagID(self, detail: str) -> str:
         return f'{self.ID_PREFIX}{detail}-{self.name}'
@@ -358,97 +498,94 @@ class ImageBlock:
     def setAttr(self, name: str, attr: str, value: str) -> None:
         setAttr(self.getTag(name), attr, value)
 
-    def saveFile(self, byteArray: bytes | Uint8Array | None) -> None:
-        assert options
-        options.saveFile(self.name, byteArray)
+    def setFileName(self, fileName: str | None = None) -> None:
+        assert self.options
+        if not fileName:
+            fileName = f'{self.options.taskName}-{self.name}.png'
+        self.fileName = fileName
+        self.setAttr('name', TEXT, fileName)
+        self.setAttr('download-link', 'download', fileName)
 
-    def loadFile(self) -> bytearray | None:
-        assert options
-        return options.loadFile(self.name)
+    def setURL(self, url: str = '') -> None:
+        self.setAttr('display', 'src', url)
+        self.setAttr('display-link', 'href', url)
+        self.setAttr('download-link', 'href', url)
 
-    def display(self, byteArray: bytes | Uint8Array | None, description: str = "") -> None:
+    def setDescription(self, message: str) -> None:
+        self.setAttr('description', TEXT, message)
+        self.show('description')
+
+    def error(self, operation: str, exception: BaseException | None = None) -> None:
+        self.delFile()
+        message = f"ERROR {operation} image"
+        if exception:
+            message += f": {exception}"
+        self.setDescription(message)
+        self.hide('remove')
+
+    def resetBlock(self, description: str | None = None) -> None:
         if src := self.getAttr('display', 'src'):
             revokeObjectURL(src)
-        self.setAttr('description', TEXT, description)
-        self.show('description')
-        if byteArray is None:  # E.g. Esc was pressed in upload dialog
-            self.setAttr('display', 'src', '')
-            self.setAttr('display-link', 'href', '')
-            self.setAttr('download-link', 'href', '')
-            self.hide('display-block')
-            self.hide('download-block')
+        self.setURL()
+        self.hide('display-block')
+        self.hide('remove')
+        if description:
+            self.setDescription(description)
+            self.show('block')
         else:
-            url = createObjectURLFromBytes(byteArray)
-            self.setAttr('display', 'src', url)
-            self.setAttr('display-link', 'href', url)
-            self.setAttr('download-link', 'href', url)
-            self.show('display-block')
-            self.show('download-block')
-            self.saveFile(byteArray)
-
-    def render(self) -> None:  # ToDo: Should this be inlined?
-        # Create DOM tag
-        blockID = self.getTagID('block')
-        block = getTagByID('template').clone(blockID)
-        getTagByID('uploads' if self.isUpload else 'generated').append(block)
-
-        # Assign named IDs to all children that have image-* classes
-        for tag in block.find('*'):
-            for clas in tag.classes:
-                if clas.startswith(self.ID_PREFIX):
-                    tag.id = f'{clas}-{self.name}'
-                    break
-
-        # Adjust children attributes
-        self.setAttr('title', TEXT, self.name.capitalize() + " file")
-        linkTarget = self.name + '.png'
-        self.setAttr('download-link', 'download', linkTarget)
-        self.setAttr('name', TEXT, linkTarget)
-        if self.isUpload:
             self.hide('description')
-        else:
-            self.hide('upload-block')
+            if not self.isUpload:
+                self.hide('block')
 
-        uploadTag = self.getTag('upload')
+    def startOperation(self, operation: str) -> None:
+        self.resetBlock(f"{operation.capitalize()} image...")
 
-        @when(CHANGE, uploadTag)  # type: ignore[untyped-decorator]
-        @typechecked
-        async def uploadEventHandler(_e: Event) -> None:
-            #removeChildren('generated')
-            if fileName := uploadTag.value:
-                fileName = getFileNameFromPath(fileName)
-                self.setAttr('download-link', 'download', fileName)
-                self.setAttr('name', TEXT, fileName)
-                self.display(None, "Loading image...")
-                await repaint()
-                try:
-                    file = uploadTag.files.item(0)  # ToDo: Generate test event?
-                    byteArray = await blobToByteArray(file)
-                    image = loadImage(byteArray.to_bytes())
-                except Exception as ex:  # noqa : BLE001
-                    self.display(None, f"Error loading image: {ex}")
-                    return
-                self.display(byteArray, f"{file.size} bytes {image.format} {getImageMode(image)} {image.width}x{image.height}")
-                processed = ImageBlock(Stage.PROCESSED)
-                processed.display(None, "Processing image...")
-                await repaint()
-                try:
-                    image = processImage(image, **vars(options))
-                except Exception as ex:  # noqa : BLE001
-                    self.display(None, f"Error processing image: {ex}")
-                    return
-                processed.display(imageToBytes(image), f"{getImageMode(image)} {image.width}x{image.height}")
-            else:
-                self.display(None)
+    def completeOperation(self, image: Image, imageBytes: bytes) -> None:
+        self.image = image
+        self.setDescription(f"{len(imageBytes)} bytes {image.format} {getImageMode(image)} {image.width}x{image.height}")
+        self.setURL(createObjectURLFromBytes(imageBytes, getMimeTypeFromImage(image)))
+        self.show('display-block')
+        self.show('block')
+        if self.isUpload:
+            self.show('remove')
 
-        # Load stored image
-        if byteArray := self.loadFile():
-            file = newFile([newUint8Array(byteArray),], 'test.name', to_js({'type': 'image/png'}))  # to_js() converts Python dict into JS object
-            dataTransfer = DataTransfer.new()
-            dataTransfer.items.add(file)
-            uploadTag.files = dataTransfer.files
-            #dispatchEvent(uploadTag, CHANGE)
-            show(blockID)
+    def saveFile(self, byteArray: bytes) -> None:
+        assert self.options
+        assert self.fileName
+        self.options.saveFile(self.name, byteArray, self.fileName)
+
+    def loadFile(self) -> tuple[bytes | None, str | None]:
+        assert self.options
+        return self.options.loadFile(self.name)
+
+    def delFile(self) -> None:
+        assert self.options
+        self.options.delFile(self.name)
+
+    def remove(self) -> None:
+        self.delFile()
+        self.resetBlock()
+        for block in self.dependencies:
+            block.remove()
+
+    async def upload(self, fileName: str | None = None, data: Blob | None = None) -> None:
+        assert self.isUpload
+        if not fileName:  # E.g. Esc was pressed at upload dialog
+            return
+        self.startOperation("loading")
+        await repaint()
+        try:
+            assert data, data
+            imageBytes = await blobToBytes(data)
+            image = loadImage(imageBytes)
+        except Exception as ex:  # noqa : BLE001
+            self.error("loading", ex)
+            return
+        self.setFileName(fileName)
+        self.saveFile(imageBytes)
+        self.completeOperation(image, imageBytes)
+        self.show('remove')
+        await self.pipeline()
 
 @typechecked
 def exceptionHandler(source: str, exceptionType: type[BaseException | None] | None = None, exception: BaseException | None = None, traceback: TracebackType | None = None) -> None:
@@ -478,15 +615,12 @@ async def main() -> None:
     log("Configuring app")
     sys.excepthook = mainExceptionHandler
     get_running_loop().set_exception_handler(loopExceptionHandler)
-    await Options.init()
-    #ImageBlock(Stage.SOURCE)
+    await ImageBlock.init()
     hide('log')
     show('content')
     log("Running app")
-    #raise Exception("Booo in loop!")
 
 if __name__ == '__main__':
     create_task(main())  # noqa: RUF006
-    #raise Exception("Booo in main!")
 
 print("[python] Loaded app")

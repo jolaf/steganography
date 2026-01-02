@@ -73,7 +73,7 @@ input[type="text"]:user-invalid
 }
 
 .image-upload-block:hover,
-.image-download-block:hover {
+.image-display-block:hover {
     color: red;
 }
 
