@@ -8,6 +8,7 @@ from asyncio import create_task, get_running_loop, sleep, AbstractEventLoop
 from collections.abc import Callable, Iterable, Mapping  # noqa: TC003
 from contextlib import suppress
 from enum import Enum
+from gettext import translation, NullTranslations
 from itertools import chain
 from re import findall, split
 import sys
@@ -42,9 +43,13 @@ except ImportError:
     try:
         from pyscript import __version__ as pyscriptVersion
     except ImportError:
-        pyscriptVersion = next(tag.src for tag in page['script']).split('/')[-2] or "UNKNOWN"
+        urls = tuple(url for url in (tag.src for tag in page['script']) if url.endswith('core.js'))
+        pyscriptVersion = urls[0].split('/')[-2] if urls else "UNKNOWN"
 
 if TYPE_CHECKING:
+    def _(s: str) -> str:  # stub for gettext string wrapper
+        return s
+
     # Workarounds for mypy, as stuff cannot be imported from PyScript when not in a browser
     type Element = Any
     def newCSSStyleSheet() -> CSSStyleSheet:
@@ -178,7 +183,6 @@ def dispatchEvent(element: str | Element, eventType: str) -> None:
         element = getTagByID(element)
     element.dispatchEvent(newEvent(eventType))
 
-# noinspection PyRedundantParentheses
 @typechecked
 class Options(Storage):  # type: ignore[misc, no-any-unimported]
     TAG_ARGS: ClassVar[Mapping[type[TagAttrValue], Mapping[str, TagAttrValue]]] = {
@@ -202,11 +206,29 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         },
     }
 
+    LANGUAGES: ClassVar[Mapping[str, str]] = {
+        'en_US': "English",
+        'ru_RU': "Русский",
+    }
+
+    TRANSLATION: ClassVar[NullTranslations] = translation('Steganography', './gettext/', LANGUAGES, fallback = True)
+
+    @classmethod
+    def setLanguage(cls, language: str) -> None:
+        cls.TRANSLATION.install(language)
+        if _('GETTEXT_TEST') == 'GETTEXT_TEST_PASSED':
+            log("Language set to", language)
+        else:
+            log(f"ERROR: gettext {type(cls.TRANSLATION).__name__}({language}) is not configured properly, expected GETTEXT_TEST_PASSED, got {_('GETTEXT_TEST')}")
+            return
+        # ToDo: Get selectors from gettext.js (?) and walk through HTML code by calling _() for each value
+        # ToDo: Probably use .firstChild for tags instead of .innerText/.textContent, to preserve tag structure
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # Constructor is only called internally, so we don't know the args and don't care
         super().__init__(*args, **kwargs)
-        #log("# Options: initializing default values")
 
         # These fields define names, types and DEFAULT values for options, actual values are stored in Storage
+        self.language = next(iter(self.LANGUAGES))
         self.taskName = ''
         self.maxPreviewWidth = 500
         self.maxPreviewHeight = 200
@@ -226,18 +248,15 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         self.dither = False
         self.smooth = False
 
-        #log("# Options: configuring tags and connecting them to options")
         tags: list[Element] = []
         for (name, defaultValue) in vars(self).items():
             if isinstance(defaultValue, TagAttrValue):
                 tags.append(self.configureTag(name, defaultValue))
 
-        #log("# Options: configuring stylesheet to adjust with options")
         self.styleSheet = newCSSStyleSheet()
         adoptedStyleSheets.push(self.styleSheet)
         self.updateStyle()
 
-        #log("# Options: configuring Reset button")
         @when(CLICK, '#options-reset')  # type: ignore[untyped-decorator]
         @typechecked
         def resetEventHandler(_e: Event) -> None:
@@ -254,23 +273,28 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         assert isinstance(value, valueType), f"Incorrect type for option {name}: {type(value).__name__}, expected {valueType.__name__}"
         tagID = '-'.join(chain(('option',), (word.lower() for word in findall(r'[a-z]+|[A-Z][a-z]*|[A-Z]+', name))))
         tag = getTagByID(tagID)
-        assert tag.tagName.lower() == 'input', tag.tagName
+        assert tag.tagName.lower() in ('input', 'select'), tag.tagName  # pylint: disable=use-set-for-membership
         tag.default = defaultValue
         if name == 'taskName':
             exclude = r'''\/:\\?*'<">&\|'''  # ToDo: Generate title and placeholder too
             setAttr(tag, 'pattern', rf'[^{exclude}\s][^{exclude}]+[^{exclude}\s]')  # Also avoid whitespace at start and end
-        args = self.TAG_ARGS[valueType]
-        for (attr, attrValue) in args.items():
-            setAttr(tag, attr, attrValue, onlyIfAbsent = True)  # Set <input> tag attributes according to value type
-        inputType = args.get('type', 'text')
-        setAttr(tag, 'type', inputType, onlyIfAbsent = True)  # Make sure <input type="text"> is always specified explicitly
-        if inputType == 'text':
-            setAttr(tag, 'maxlength', 4, onlyIfAbsent = True)
+        elif name == 'language':
+            tag.innerHTML = ''.join(f'<option value="{lang}">{name}</option>' for (lang, name) in self.LANGUAGES.items())
+            self.setLanguage(value)
+        if tag.tagName.lower() == 'input':
+            args = self.TAG_ARGS[valueType]
+            for (attr, attrValue) in args.items():
+                setAttr(tag, attr, attrValue, onlyIfAbsent = True)  # Set <input> tag attributes according to value type
+            inputType = args.get('type', 'text')
+            setAttr(tag, 'type', inputType, onlyIfAbsent = True)  # Make sure <input type="text"> is always specified explicitly
+            if inputType == 'text':
+                setAttr(tag, 'maxlength', 4, onlyIfAbsent = True)
+        else:
+            inputType = None  # For select tags
         if inputType == 'checkbox':
             tag.checked = value
         else:
             tag.value = value
-        #log(f"Options.configureTag({name}, {defaultValue!r}): {type(tag).__name__} {tag.getAttribute('type')} {tag.getAttribute('inputmode')} {tag.checked if inputType == 'checkbox' else tag.value!r}")
 
         @when(CHANGE, tag)  # type: ignore[untyped-decorator]
         @typechecked
@@ -279,15 +303,16 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
             if valueType is str:
                 if name == 'taskName' and not newValue:
                     newValue = getRandomName()  # Provide random task name to save user from extra thinking
+                elif name == 'language':
+                    assert isinstance(newValue, str), type(newValue)
+                    self.setLanguage(newValue)
             elif valueType is bool:
                 newValue = tag.checked
             elif newValue:  # int or float from non-empty string
                 newValue = valueType(newValue)
             else:  # empty string
                 newValue = defaultValue
-            #log(f"Options.update({name}, {newValue!r})")
             self[name] = newValue  # Save to database
-            #log(f"Options[{name}] = {self.get(name)!r}")
             tag.value = newValue  # Write processed value back to the input tag
             if name in ('maxPreviewWidth', 'maxPreviewHeight'):  # pylint: disable=use-set-for-membership
                 self.updateStyle()
@@ -313,6 +338,7 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
 
     def loadFile(self, name: str) -> tuple[bytes | None, str | None]:
         data: bytearray = self.get(f'file-{name}')
+        # noinspection PyRedundantParentheses
         return (bytes(data) if data else None, self.get(f'file-{name}-fileName'))
 
     def delFile(self, name: str) -> None:
@@ -323,29 +349,24 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
 
     def __getattribute__(self, name: str) -> Any:
         defaultValue = super().__getattribute__(name)
-        #log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, TagAttrValueType)})")
         if not isinstance(defaultValue, TagAttrValue):
             return defaultValue  # Not an option field
         ret = self.get(name, None)
-        #log(f"Options.get({name}) = {ret!r}")
         return defaultValue if ret is None else ret
 
     def __setattr__(self, name: str, value: Any) -> None:
         try:
             defaultValue = super().__getattribute__(name)
-            #log(f"Options.__getattribute__({name}) = {defaultValue!r}: {type(defaultValue).__name__} ({isinstance(defaultValue, TagAttrValueType)})")
             if isinstance(defaultValue, TagAttrValue):
                 if isinstance(defaultValue, float):
                     assert isinstance(value, int | float), f"Incorrect type for option {name}: {type(value).__name__}, expected int or float"
                 else:
                     assert isinstance(value, type(defaultValue)), f"Incorrect type for option {name}: {type(value).__name__}, expected {type(defaultValue).__name__}"
-                log(f"Options[{name}] = {value!r}")
                 self[name] = value
                 self.sync()
                 return
         except AttributeError:
-            pass  # log(f"Options.__getattribute__({name}) = AttributeError")
-        #log(f"Options.__setattr__({name}) = {value!r}")
+            pass
         super().__setattr__(name, value)
 
 @typechecked
@@ -393,11 +414,11 @@ class ImageBlock:
 
     @classmethod
     async def process(cls, targetStages: Stage | Iterable[Stage], processFunction: Callable[..., Image | tuple[Image, ...]], sourceStages: Stage | Iterable[Stage]) -> None:
-        assert cls.options
+        assert cls.options is not None
         sources = tuple(cls.ImageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.ImageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         for t in targets:
-            t.startOperation("processing")
+            t.startOperation(_("Processing image..."))
         await repaint()
         try:
             ret = processFunction(*(source.image for source in sources), **vars(cls.options))
@@ -408,7 +429,7 @@ class ImageBlock:
                 target.completeOperation(image, imageToBytes(image))
         except Exception as ex:  # noqa : BLE001
             for target in targets:
-                target.error("processing", ex)
+                target.error(_("ERROR processing image"), ex)
             return
 
     @classmethod
@@ -455,7 +476,7 @@ class ImageBlock:
             try:
                 image = loadImage(imageBytes, fileName)
             except Exception as ex:  # noqa : BLE001
-                self.error("loading", ex)
+                self.error(_("ERROR loading image"), ex)
                 return
             self.setFileName(fileName)
             self.completeOperation(image, imageToBytes(image))
@@ -499,7 +520,7 @@ class ImageBlock:
         setAttr(self.getTag(name), attr, value)
 
     def setFileName(self, fileName: str | None = None) -> None:
-        assert self.options
+        assert self.options is not None
         if not fileName:
             fileName = f'{self.options.taskName}-{self.name}.png'
         self.fileName = fileName
@@ -515,9 +536,8 @@ class ImageBlock:
         self.setAttr('description', TEXT, message)
         self.show('description')
 
-    def error(self, operation: str, exception: BaseException | None = None) -> None:
+    def error(self, message: str, exception: BaseException | None = None) -> None:
         self.delFile()
-        message = f"ERROR {operation} image"
         if exception:
             message += f": {exception}"
         self.setDescription(message)
@@ -537,12 +557,12 @@ class ImageBlock:
             if not self.isUpload:
                 self.hide('block')
 
-    def startOperation(self, operation: str) -> None:
-        self.resetBlock(f"{operation.capitalize()} image...")
+    def startOperation(self, message: str) -> None:
+        self.resetBlock(message)
 
     def completeOperation(self, image: Image, imageBytes: bytes) -> None:
         self.image = image
-        self.setDescription(f"{len(imageBytes)} bytes {image.format} {getImageMode(image)} {image.width}x{image.height}")
+        self.setDescription(f"{len(imageBytes)} {_("bytes")} {image.format} {getImageMode(image)} {image.width}x{image.height}")
         self.setURL(createObjectURLFromBytes(imageBytes, getMimeTypeFromImage(image)))
         self.show('display-block')
         self.show('block')
@@ -550,16 +570,16 @@ class ImageBlock:
             self.show('remove')
 
     def saveFile(self, byteArray: bytes) -> None:
-        assert self.options
+        assert self.options is not None
         assert self.fileName
         self.options.saveFile(self.name, byteArray, self.fileName)
 
     def loadFile(self) -> tuple[bytes | None, str | None]:
-        assert self.options
+        assert self.options is not None
         return self.options.loadFile(self.name)
 
     def delFile(self) -> None:
-        assert self.options
+        assert self.options is not None
         self.options.delFile(self.name)
 
     def remove(self) -> None:
@@ -572,14 +592,14 @@ class ImageBlock:
         assert self.isUpload
         if not fileName:  # E.g. Esc was pressed at upload dialog
             return
-        self.startOperation("loading")
+        self.startOperation(_("Loading image..."))
         await repaint()
         try:
             assert data, data
             imageBytes = await blobToBytes(data)
             image = loadImage(imageBytes)
         except Exception as ex:  # noqa : BLE001
-            self.error("loading", ex)
+            self.error(_("ERROR loading image"), ex)
             return
         self.setFileName(fileName)
         self.saveFile(imageBytes)

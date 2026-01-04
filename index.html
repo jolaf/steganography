@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="_(en)">
+<html lang="en">
 <head>
   <title>Steganography</title>
   <meta charset="utf-8">
@@ -15,11 +15,11 @@
   <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
   <link rel="shortcut icon" href="images/favicon.ico">
   <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
-  <link rel="manifest" href="images/site.webmanifest">
+  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.11.2/core.css">
   <link rel="stylesheet" href="script.css">
+  <script type="module" src="loading.js"></script>
   <script type="module" src="https://pyscript.net/releases/2025.11.2/core.js"></script>
-  <script type="module" src="script.js"></script>
 </head>
 <body>
 <script type="py" src="script.py" config="pyscript.toml" target="log"></script>
@@ -30,6 +30,10 @@
 </pre>
   <div id="content" class="hidden">
     <div id="options">
+      <div id="option-language-block">
+        <label for="option-language">Select language:</label>&nbsp;
+        <select id="option-language"></select>
+      </div>
       <div id="option-task-name-block">
         <label for="option-task-name">Task name:</label>&nbsp;
         <input id="option-task-name" maxlength="40" placeholder="Do not use /:\?*'&lt;&quot;&gt;&amp;|" title="Do not use /:\?*'&lt;&quot;&gt;&amp;|" autocomplete="on">
@@ -134,7 +138,7 @@
     <div id="generated"></div>
     <div id="footer">
       <table><tr>
-        <td><p>© <a href="https://vk.com/jolaf">Василий Захаров</a> 2025</p></td>
+        <td><p>© <a href="https://vk.com/jolaf">Vasily Zakharov</a> 2026</p></td>
         <td><p id="build">dev</p></td>
       </tr></table>
     </div>

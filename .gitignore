@@ -1,5 +1,10 @@
 .DS_Store
 .idea
+package*.json
+html.pot
+messages.pot
+python.pot
 __pycache__
+/node_modules/
 /pyscript
 /pyscript-offline/

@@ -59,6 +59,7 @@ input[type="text"]:user-invalid
     float: left;
 }
 
+#option-language-block,
 #options-reset {
     float: right;
 }
