@@ -8,7 +8,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Steganography 1.0\n"
-"POT-Creation-Date: 2026-01-04 23:16+0300\n"
+"POT-Creation-Date: 2026-01-05 14:31+0300\n"
 "PO-Revision-Date: 2026-01-04 01:08+0300\n"
 "Last-Translator: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language-Team: Vasily Zakharov <vmzakhar@gmail.com>\n"
@@ -62,12 +62,8 @@ msgstr ""
 msgid "defaults to key size"
 msgstr ""
 
-#: index.html:37
-msgid "if it takes too long, please refresh page or press F12 to check browser console"
-msgstr ""
-
 #: index.html:68
-msgid "only specify one value to constraint proportions"
+msgid "only specify one value to constrain proportions"
 msgstr ""
 
 #: index.html:45
@@ -94,6 +90,14 @@ msgstr ""
 msgid "Do not use"
 msgstr ""
 
+#: index.html:43
+msgid "integer"
+msgstr ""
+
+#: index.html:43
+msgid "float"
+msgstr ""
+
 #: index.html:136
 msgid "Download"
 msgstr ""
@@ -108,14 +112,6 @@ msgstr ""
 
 #: index.html:59 index.html:81 index.html:98
 msgid "factor"
-msgstr ""
-
-#: index.html:104 index.html:52 index.html:65 index.html:75 index.html:87
-msgid "height"
-msgstr ""
-
-#: index.html:36
-msgid "Loading Python, please wait"
 msgstr ""
 
 #: index.html:132
@@ -148,10 +144,6 @@ msgstr ""
 
 #: index.html:42
 msgid "Task name"
-msgstr ""
-
-#: index.html:101 index.html:49 index.html:62 index.html:72 index.html:84
-msgid "width"
 msgstr ""
 
 #: index.html:145

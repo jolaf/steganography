@@ -1,23 +1,32 @@
+window.localLoadingIsWorking= true;  // Used to check if local scripts can be loaded
+
+const formatter = new Intl.DateTimeFormat('default', {
+    hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+});
+
 const target = document.getElementById('log');
 
 console.log("[javascript] Started JavaScript");
-target.append("Started JavaScript\n");
+target.append(formatter.format(new Date()), " [javascript] Started JavaScript\n");
 
-function log(message) {
+function pyscriptLog(message) {
     console.log("[pyscript] " + message);
-    target.append(message + '\n');
+    target.append("" + formatter.format(new Date()) + " [pyscript] " + message + '\n');
 }
 
 addEventListener('py:progress', ({ detail }) => {
-    log(detail);
+    pyscriptLog(detail);
 });
 
 addEventListener('py:ready', () => {
-    log("Starting PyScript");
+    pyscriptLog("Starting PyScript");
 });
 
 addEventListener('py:done', () => {
-    log("Started PyScript");
+    pyscriptLog("Started PyScript");
 });
 
 const consoleWarn = console.warn

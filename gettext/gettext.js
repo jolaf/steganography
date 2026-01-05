@@ -1,4 +1,3 @@
-
 //
 // Config for gettext-extract to create .pot from HTML files
 //
@@ -9,7 +8,6 @@
 // # Now merge html.pot with messages.pot manually
 // # and put the result into Steganography.pot
 //
-
 const { GettextExtractor, HtmlExtractors } = require('gettext-extractor');
 
 const extractor = new GettextExtractor();

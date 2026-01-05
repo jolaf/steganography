@@ -7,6 +7,7 @@ print("[python] Loading app")
 from asyncio import create_task, get_running_loop, sleep, AbstractEventLoop
 from collections.abc import Callable, Iterable, Iterator, Mapping  # noqa: TC003
 from contextlib import suppress
+from datetime import datetime
 from enum import Enum
 from gettext import translation, GNUTranslations
 from itertools import chain
@@ -132,7 +133,7 @@ def log(*args: Any) -> None:
     print("[python]", message)
     logTag = getTagByID('log')
     # noinspection PyProtectedMember
-    logTag._dom_element.append(message + '\n')  # We have to use _dom_element because PyScript version of append() is not working with strings as of v2025.11.2  # noqa: SLF001  # pylint: disable=protected-access
+    logTag._dom_element.append(f"{datetime.now().astimezone().strftime('%H:%M:%S')} [python] {message}\n")  # We have to use _dom_element because PyScript version of append() is not working with strings as of v2025.11.2  # noqa: SLF001  # pylint: disable=protected-access
     test = message.lower()
     if any(word in test for word in ('error', 'exception')):
         logTag.classes.add('error')
@@ -222,7 +223,7 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         },
         float: {
             'inputmode': 'decimal',
-            'placeholder': 'float resize factor',
+            'placeholder': 'float',
             'pattern': r'\.[0-9]{1,2}|[0-9]+\.[0-9]{1,2}|[0-9]+\.?',
             'default': 1.0,
         },
@@ -245,12 +246,12 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         if _('GETTEXT_TEST') != 'GETTEXT_TEST_' + language:
             log(f"ERROR: gettext.{type(tr).__name__}({language}) is not configured properly, expected GETTEXT_TEST_{language}, got {_('GETTEXT_TEST')}")
             return
-        log("Language set to", language)
+        log("Language set to", cls.LANGUAGES[language])
         for textNode in iterTextNodes():  # ToDo: exclude log from parsing, probably by whitelisting valid roots and chaining results
             if (value := textNode.nodeValue).isspace():
                 continue
             assert value
-            if m := match(r'^(\W*)(.*?)(\W*)$', value):  # ToDo: Improve regex to exclude digits from middle group
+            if m := match(r'^([\W\d_]*)(.*?)([\W\d_]*)$', value):
                 (prefix, translatable, suffix) = m.groups()
                 if not translatable:
                     continue
@@ -441,9 +442,7 @@ class ImageBlock:
     @classmethod
     async def init(cls) -> None:
         assert cls.options is None  # This method should only be called once
-        log("Initializing Options")
         cls.options = await storage('steganography', storage_class = Options)
-        log("Rendering HTML blocks")
         await repaint()
         for stage in Stage:
             cls.ImageBlocks[stage] = ImageBlock(stage)
@@ -483,7 +482,6 @@ class ImageBlock:
 
     def __init__(self, stage: Stage) -> None:
         self.name = stage.name.lower()
-        log("Stage", self.name)
         self.isUpload = (stage.value <= Stage.LOCK.value)  # pylint: disable=superfluous-parens
         self.isProcessed = not self.isUpload and stage.value <= Stage.PROCESSED_KEY.value
         self.isGenerated = not self.isUpload and not self.isProcessed
@@ -514,6 +512,7 @@ class ImageBlock:
         (imageBytes, fileName) = self.loadFile()
         if imageBytes:
             try:
+                log("Loading cached image:", fileName)
                 image = loadImage(imageBytes, fileName)
             except Exception as ex:  # noqa : BLE001
                 self.error(_("loading image"), ex)
@@ -672,6 +671,7 @@ async def main() -> None:
     log("PyScript config:", pyscriptConfig)
     sys.excepthook = mainExceptionHandler
     get_running_loop().set_exception_handler(loopExceptionHandler)
+    log("Configuring app")
     await ImageBlock.init()
     hide('log')
     show('content')

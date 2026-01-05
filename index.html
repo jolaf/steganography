@@ -11,14 +11,31 @@
   <meta name="application-name" content="Steganography">
   <meta name="msapplication-TileColor" content="burlywood">
   <meta name="theme-color" content="burlywood">
-  <link rel="icon" type="image/png" sizes="96x96" href="images/favicon-96x96.png">
+  <link rel="icon" type="image/png" sizes="96x96" href="images/favicon-96.png">
   <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
   <link rel="shortcut icon" href="images/favicon.ico">
-  <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="images/favicon-180.png">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.11.2/core.css">
   <link rel="stylesheet" href="script.css">
   <script type="module" src="loading.js"></script>
+  <script type="module">
+    let location = window.location;
+    let locationName;
+    if (location.protocol === 'file:') {
+        locationName = 'files';
+    } else if (location.hostname === 'localhost') {
+        locationName = (location.port === '63342') ? 'PyCharm' : 'localhost';
+    } else if (location.hostname.endsWith('github.io')) {
+        locationName = 'GitHub Pages';
+    } else {
+        locationName = location.host;
+    }
+    document.getElementById('location').textContent = '/' + locationName;
+    if (typeof localLoadingIsWorking === 'undefined') {
+        document.getElementById('log').textContent = 'ERROR: Loading failed, probably because you\'re running from local files, and browser CORS prevents loading page components.';
+    }
+  </script>
   <script type="module" src="https://pyscript.net/releases/2025.11.2/core.js"></script>
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-E9101DVB96"></script>
@@ -26,15 +43,15 @@
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
-
     gtag('config', 'G-E9101DVB96');
   </script>
 </head>
 <body>
 <script type="py" src="script.py" config="pyscript.toml" target="log"></script>
 <div id="all">
-  <h1><img alt="" src="images/favicon.svg">Steganography</h1>
-  <pre id="log">Loading Python, please wait...
+  <h1><img alt="" src="images/favicon.svg">Steganography<span id="location"></span></h1>
+  <h3>Applied visual cryptography for Larp</h3>
+  <pre id="log">Loading, please wait...
 <span>(if it takes too long, please refresh page or press F12 to check browser console)</span>
 </pre>
   <div id="content" class="hidden">
@@ -59,7 +76,7 @@
         <span>(clear the fields to impose no limit)</span>
       </div>
       <div id="option-resize-image-block">
-        Resize image to:
+        Resize image to
         <label for="option-resize-factor" hidden></label>
         <input id="option-resize-factor">
         times or
@@ -69,10 +86,10 @@
         <label for="option-resize-height" hidden></label>
         <input id="option-resize-height">
         px
-        <span>(only specify one value to constraint proportions)</span>
+        <span>(only specify one value to constrain proportions)</span>
       </div>
       <div id="option-crop-image-block">
-        Crop image to:
+        Crop image to
         <label for="option-crop-width" hidden></label>
         <input id="option-crop-width">
         x

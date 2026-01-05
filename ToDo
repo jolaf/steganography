@@ -1,8 +1,7 @@
+Provide proper instructions if loading fails: github pages, python web server, npm web server, turn off CORS
 Remove unneeded translation lines from .pot/.po/.mo
 Remove ALL translation lines from en.po/.mo
-Remove spaces between tags, use CSS for spacing
-Exclude digits from translation string
-Add attribute processingL <html lang>, <meta content>, <h1> <div#options>
+Add attribute processing <html lang>, <meta content>, <h1> <div#options>
 Add timestamps to log
 Regenerate at options change
 Lock image (upload, remove)

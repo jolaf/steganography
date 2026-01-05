@@ -28,10 +28,20 @@ a {
     color: inherit;
 }
 
+#log {
+    border-bottom: 1px solid black;
+    padding-bottom: 1em;
+}
+
 #log span {
     display: block;
     font-size: x-small;
     font-style: italic;
+}
+
+#location {
+    font-size: small;
+    margin-left: 1ch;
 }
 
 #log.error {
@@ -42,9 +52,21 @@ a {
     padding: 1em;
 }
 
+input[type="text"] {
+    width: 6ch;
+}
+
+input[type="text"],
+select {
+    margin: 0 0.5ch;
+}
+
+input#option-task-name {
+    width: 25ch;
+}
+
 input[type="text"]:invalid,
-input[type="text"]:user-invalid
-{
+input[type="text"]:user-invalid {
     background-color: pink;
 }
 
@@ -60,6 +82,15 @@ input[type="text"]:user-invalid
 
 #options span {
     font-size: x-small;
+    margin-left: 0.75ch;
+}
+
+#option-task-name-block span {
+    margin-left: 0.5ch;
+}
+
+#option-language-block label {
+    margin-left: 1.5ch;
 }
 
 #options > :nth-last-child(2) {
@@ -93,7 +124,6 @@ input[type="text"]:user-invalid
     text-decoration: none;
 }
 
-.upload-input,
 .image-name {
     width: 100%;
     font-family: monospace;
