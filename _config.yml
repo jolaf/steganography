@@ -1,0 +1,8 @@
+theme: jekyll-theme-minimal
+
+title: Steganography
+description: Applied visual cryptography for Larp
+
+logo: images/favicon.svg
+show_downloads: "true"
+google_analytics: G-E9101DVB96

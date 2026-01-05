@@ -20,98 +20,106 @@
   <link rel="stylesheet" href="script.css">
   <script type="module" src="loading.js"></script>
   <script type="module" src="https://pyscript.net/releases/2025.11.2/core.js"></script>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-E9101DVB96"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-E9101DVB96');
+  </script>
 </head>
 <body>
 <script type="py" src="script.py" config="pyscript.toml" target="log"></script>
 <div id="all">
-  <h1>Steganography</h1>
+  <h1><img alt="" src="images/favicon.svg">Steganography</h1>
   <pre id="log">Loading Python, please wait...
 <span>(if it takes too long, please refresh page or press F12 to check browser console)</span>
 </pre>
   <div id="content" class="hidden">
     <div id="options">
       <div id="option-language-block">
-        <label for="option-language">Select language:</label>&nbsp;
+        <label for="option-language">Select language:</label>
         <select id="option-language"></select>
       </div>
       <div id="option-task-name-block">
-        <label for="option-task-name">Task name:</label>&nbsp;
+        <label for="option-task-name">Task name:</label>
         <input id="option-task-name" maxlength="40" placeholder="Do not use /:\?*'&lt;&quot;&gt;&amp;|" title="Do not use /:\?*'&lt;&quot;&gt;&amp;|" autocomplete="on">
-        &nbsp;
         <span>(used to generate output file names)</span>
       </div>
       <div id="option-preview-size-block">
-        Max preview size:&nbsp;
-        <label for="option-max-preview-width" hidden>width</label>
+        Max preview size:
+        <label for="option-max-preview-width" hidden></label>
         <input id="option-max-preview-width">
         x
-        <label for="option-max-preview-height" hidden>height</label>
+        <label for="option-max-preview-height" hidden></label>
         <input id="option-max-preview-height">
-        px&nbsp;
+        px
         <span>(clear the fields to impose no limit)</span>
       </div>
       <div id="option-resize-image-block">
-        Resize image to:&nbsp;
-        <label for="option-resize-factor" hidden>factor</label>
+        Resize image to:
+        <label for="option-resize-factor" hidden></label>
         <input id="option-resize-factor">
-        &nbsp;times or&nbsp;
-        <label for="option-resize-width" hidden>width</label>
+        times or
+        <label for="option-resize-width" hidden></label>
         <input id="option-resize-width">
         x
-        <label for="option-resize-height" hidden>height</label>
+        <label for="option-resize-height" hidden></label>
         <input id="option-resize-height">
-        px&nbsp;
+        px
         <span>(only specify one value to constraint proportions)</span>
       </div>
       <div id="option-crop-image-block">
-        Crop image to:&nbsp;
-        <label for="option-crop-width" hidden>width</label>
+        Crop image to:
+        <label for="option-crop-width" hidden></label>
         <input id="option-crop-width">
         x
-        <label for="option-crop-height" hidden>height</label>
+        <label for="option-crop-height" hidden></label>
         <input id="option-crop-height">
-        px&nbsp;
+        px
       </div>
       <div id="option-key-size-block">
-        Key image size:&nbsp;
-        <label for="option-key-factor" hidden>factor</label>
+        Key image size:
+        <label for="option-key-factor" hidden></label>
         <input id="option-key-factor">
-        &nbsp;times or&nbsp;
-        <label for="option-key-width" hidden>width</label>
+        times or
+        <label for="option-key-width" hidden></label>
         <input id="option-key-width">
         x
-        <label for="option-key-height" hidden>height</label>
+        <label for="option-key-height" hidden></label>
         <input id="option-key-height">
-        px&nbsp;
+        px
         <span>(defaults to input image size)</span>
       </div>
       <div id="option-key-rotate-block">
-        <label for="option-key-rotate">Random key rotation:</label>
+        <label for="option-key-rotate">Random key rotation</label>
         <input id="option-key-rotate">
       </div>
       <div id="option-lock-size-block">
-        Lock image size:&nbsp;
-        <label for="option-lock-factor" hidden>factor</label>
+        Lock image size:
+        <label for="option-lock-factor" hidden></label>
         <input id="option-lock-factor">
-        &nbsp;times or&nbsp;
-        <label for="option-lock-width" hidden>width</label>
+        times or
+        <label for="option-lock-width" hidden></label>
         <input id="option-lock-width">
         x
-        <label for="option-lock-height" hidden>height</label>
+        <label for="option-lock-height" hidden></label>
         <input id="option-lock-height">
-        px&nbsp;
+        px
         <span>(defaults to key size)</span>
       </div>
       <div id="option-key-resize-block">
-        <label for="option-key-resize">Resize key to lock:</label>&nbsp;
+        <label for="option-key-resize">Resize key to lock</label>
         <input id="option-key-resize">
       </div>
       <div id="option-dither-block">
-        <label for="option-dither">Employ dithering:</label>&nbsp;
+        <label for="option-dither">Employ dithering</label>
         <input id="option-dither">
       </div>
       <div id="option-smooth-block">
-        <label for="option-smooth">Smoother background:</label>&nbsp;
+        <label for="option-smooth">Smoother background</label>
         <input id="option-smooth">
       </div>
       <button id="options-reset">Reset options to defaults</button>
@@ -134,7 +142,8 @@
         </a>
       </div>
     </div>
-    <div id="uploads"></div>
+    <div id="uploaded"></div>
+    <div id="processed"></div>
     <div id="generated"></div>
     <div id="footer">
       <table><tr>

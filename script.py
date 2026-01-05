@@ -5,12 +5,12 @@ from __future__ import annotations
 print("[python] Loading app")
 
 from asyncio import create_task, get_running_loop, sleep, AbstractEventLoop
-from collections.abc import Callable, Iterable, Mapping  # noqa: TC003
+from collections.abc import Callable, Iterable, Iterator, Mapping  # noqa: TC003
 from contextlib import suppress
 from enum import Enum
-from gettext import translation, NullTranslations
+from gettext import translation, GNUTranslations
 from itertools import chain
-from re import findall, split
+from re import findall, match, split
 import sys
 from sys import version as pythonVersion
 from traceback import extract_tb
@@ -52,6 +52,10 @@ if TYPE_CHECKING:
 
     # Workarounds for mypy, as stuff cannot be imported from PyScript when not in a browser
     type Element = Any
+    Node = Any  # beartype objects if we use 'type' here
+    NodeFilter = Any  # beartype objects if we use 'type' here
+    type TreeWalker = Any
+
     def newCSSStyleSheet() -> CSSStyleSheet:
         pass
     def newBlob(_blobParts: Iterable[Any], _options: Any) -> Blob:
@@ -66,11 +70,16 @@ if TYPE_CHECKING:
         return ''
     def revokeObjectURL(_url: str) -> None:
         pass
+    def createTreeWalker(_root: Element, _whatToShow: int = -1, _filter: Callable[[Node], int] | None = None) -> TreeWalker:
+        pass
+    def reload() -> None:
+        pass
     adoptedStyleSheets = Any
 else:
     from pyscript import document  # type: ignore[attr-defined]
     from pyscript.web import Element  # type: ignore[import-not-found]
-    from js import CSSStyleSheet, Blob, Event, File, Uint8Array, URL  # type: ignore[attr-defined]
+
+    from js import location, Blob, CSSStyleSheet, Event, File, Node, NodeFilter, Text, TreeWalker, Uint8Array, URL  # type: ignore[attr-defined]
 
     # We'll redefine these classes to Any below, so we have to save all needed references
     newCSSStyleSheet = CSSStyleSheet.new
@@ -84,14 +93,23 @@ else:
     revokeObjectURL = URL.revokeObjectURL
     del URL  # We won't need it anymore
     adoptedStyleSheets = document.adoptedStyleSheets
+    createTreeWalker = document.createTreeWalker
     del document  # We won't need it anymore
+    reload = location.reload
+    del location  # We won't need it anymore
 
 # JS types that don't work as runtime type annotations
-CSSStyleSheet = Any
-Blob = Any
-File = Any
-Uint8Array = Any
-Event = Any  # Neither PyScript nor JS versions work as runtime type annotation
+# noinspection PyTypeAliasRedeclaration
+type CSSStyleSheet = Any
+Blob = Any  # beartype objects if we use 'type' here
+# noinspection PyTypeAliasRedeclaration
+type Event = Any  # Neither PyScript nor JS versions work as runtime type annotation
+# noinspection PyTypeAliasRedeclaration
+type File = Any
+# noinspection PyTypeAliasRedeclaration
+type Text = Any
+# noinspection PyTypeAliasRedeclaration
+type Uint8Array = Any
 
 try:
     from pyodide_js import version as pyodideVersion  # type: ignore[import-not-found]
@@ -184,6 +202,14 @@ def dispatchEvent(element: str | Element, eventType: str) -> None:
     element.dispatchEvent(newEvent(eventType))
 
 @typechecked
+def iterTextNodes(root: Element | None = None) -> Iterator[Text]:
+    # noinspection PyProtectedMember
+    walker = createTreeWalker((root or page.html)._dom_element, NodeFilter.SHOW_TEXT)  # noqa: SLF001  # pylint: disable=protected-access
+    while node := walker.nextNode():
+        assert node.nodeType == Node.TEXT_NODE, node.nodeType
+        yield node
+
+@typechecked
 class Options(Storage):  # type: ignore[misc, no-any-unimported]
     TAG_ARGS: ClassVar[Mapping[type[TagAttrValue], Mapping[str, TagAttrValue]]] = {
         str: {
@@ -211,18 +237,26 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         'ru_RU': "Русский",
     }
 
-    TRANSLATION: ClassVar[NullTranslations] = translation('Steganography', './gettext/', LANGUAGES, fallback = True)
+    TRANSLATIONS: ClassVar[Mapping[str, GNUTranslations]] = {language: translation('Steganography', './gettext/', (language,)) for language in LANGUAGES}
 
     @classmethod
     def setLanguage(cls, language: str) -> None:
-        cls.TRANSLATION.install(language)
-        if _('GETTEXT_TEST') == 'GETTEXT_TEST_PASSED':
-            log("Language set to", language)
-        else:
-            log(f"ERROR: gettext {type(cls.TRANSLATION).__name__}({language}) is not configured properly, expected GETTEXT_TEST_PASSED, got {_('GETTEXT_TEST')}")
+        (tr := cls.TRANSLATIONS[language]).install()
+        if _('GETTEXT_TEST') != 'GETTEXT_TEST_' + language:
+            log(f"ERROR: gettext.{type(tr).__name__}({language}) is not configured properly, expected GETTEXT_TEST_{language}, got {_('GETTEXT_TEST')}")
             return
-        # ToDo: Get selectors from gettext.js (?) and walk through HTML code by calling _() for each value
-        # ToDo: Probably use .firstChild for tags instead of .innerText/.textContent, to preserve tag structure
+        log("Language set to", language)
+        for textNode in iterTextNodes():  # ToDo: exclude log from parsing, probably by whitelisting valid roots and chaining results
+            if (value := textNode.nodeValue).isspace():
+                continue
+            assert value
+            if m := match(r'^(\W*)(.*?)(\W*)$', value):  # ToDo: Improve regex to exclude digits from middle group
+                (prefix, translatable, suffix) = m.groups()
+                if not translatable:
+                    continue
+                if (translated := _(translatable)) == translatable:
+                    continue
+                textNode.nodeValue = f'{prefix}{translated}{suffix}'
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # Constructor is only called internally, so we don't know the args and don't care
         super().__init__(*args, **kwargs)
@@ -300,16 +334,19 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         @typechecked
         async def changeEventHandler(_e: Event) -> None:
             newValue: TagAttrValue = tag.value
+            assert isinstance(newValue, str), type(newValue)
             if valueType is str:
                 if name == 'taskName' and not newValue:
                     newValue = getRandomName()  # Provide random task name to save user from extra thinking
                 elif name == 'language':
-                    assert isinstance(newValue, str), type(newValue)
-                    self.setLanguage(newValue)
+                    reload()
             elif valueType is bool:
                 newValue = tag.checked
             elif newValue:  # int or float from non-empty string
-                newValue = valueType(newValue)
+                try:
+                    newValue = valueType(newValue)
+                except ValueError:
+                    newValue = defaultValue
             else:  # empty string
                 newValue = defaultValue
             self[name] = newValue  # Save to database
@@ -404,11 +441,13 @@ class ImageBlock:
     @classmethod
     async def init(cls) -> None:
         assert cls.options is None  # This method should only be called once
+        log("Initializing Options")
         cls.options = await storage('steganography', storage_class = Options)
-        stage: Stage
+        log("Rendering HTML blocks")
+        await repaint()
         for stage in Stage:
-            assert isinstance(stage, Stage)
             cls.ImageBlocks[stage] = ImageBlock(stage)
+            await repaint()
         for (stage, block) in cls.ImageBlocks.items():
             block.dependencies = tuple(cls.ImageBlocks[s] for s in cls.DEPENDENCIES[stage])
 
@@ -418,7 +457,7 @@ class ImageBlock:
         sources = tuple(cls.ImageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.ImageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         for t in targets:
-            t.startOperation(_("Processing image..."))
+            t.startOperation(_("Processing image"))
         await repaint()
         try:
             ret = processFunction(*(source.image for source in sources), **vars(cls.options))
@@ -429,7 +468,7 @@ class ImageBlock:
                 target.completeOperation(image, imageToBytes(image))
         except Exception as ex:  # noqa : BLE001
             for target in targets:
-                target.error(_("ERROR processing image"), ex)
+                target.error(_("processing image"), ex)
             return
 
     @classmethod
@@ -444,6 +483,7 @@ class ImageBlock:
 
     def __init__(self, stage: Stage) -> None:
         self.name = stage.name.lower()
+        log("Stage", self.name)
         self.isUpload = (stage.value <= Stage.LOCK.value)  # pylint: disable=superfluous-parens
         self.isProcessed = not self.isUpload and stage.value <= Stage.PROCESSED_KEY.value
         self.isGenerated = not self.isUpload and not self.isProcessed
@@ -453,7 +493,7 @@ class ImageBlock:
 
         # Create DOM tag
         block = getTagByID('template').clone(self.getTagID('block'))
-        getTagByID('uploads' if self.isUpload else 'generated').append(block)  # ToDo: Add third section: uploaded, processed, generated?
+        getTagByID('uploaded' if self.isUpload else 'generated').append(block)  # ToDo: Add third section: uploaded, processed, generated?
 
         # Assign named IDs to all children that have image-* classes
         for tag in block.find('*'):
@@ -463,7 +503,7 @@ class ImageBlock:
                     break
 
         # Adjust children attributes
-        self.setAttr('title', TEXT, self.name.capitalize() + " file")
+        self.setAttr('title', TEXT, self.name.capitalize() + " file")  # ToDo: Translate
 
         if self.isUpload:
             self.hide('description')
@@ -476,7 +516,7 @@ class ImageBlock:
             try:
                 image = loadImage(imageBytes, fileName)
             except Exception as ex:  # noqa : BLE001
-                self.error(_("ERROR loading image"), ex)
+                self.error(_("loading image"), ex)
                 return
             self.setFileName(fileName)
             self.completeOperation(image, imageToBytes(image))
@@ -538,9 +578,7 @@ class ImageBlock:
 
     def error(self, message: str, exception: BaseException | None = None) -> None:
         self.delFile()
-        if exception:
-            message += f": {exception}"
-        self.setDescription(message)
+        self.setDescription(f"{_("ERROR")} {message}{f": {exception}" if exception else ''}")
         self.hide('remove')
 
     def resetBlock(self, description: str | None = None) -> None:
@@ -558,7 +596,7 @@ class ImageBlock:
                 self.hide('block')
 
     def startOperation(self, message: str) -> None:
-        self.resetBlock(message)
+        self.resetBlock(message + "…")
 
     def completeOperation(self, image: Image, imageBytes: bytes) -> None:
         self.image = image
@@ -592,14 +630,14 @@ class ImageBlock:
         assert self.isUpload
         if not fileName:  # E.g. Esc was pressed at upload dialog
             return
-        self.startOperation(_("Loading image..."))
+        self.startOperation(_("Loading image"))
         await repaint()
         try:
             assert data, data
             imageBytes = await blobToBytes(data)
             image = loadImage(imageBytes)
         except Exception as ex:  # noqa : BLE001
-            self.error(_("ERROR loading image"), ex)
+            self.error(_("loading image"), ex)
             return
         self.setFileName(fileName)
         self.saveFile(imageBytes)
@@ -632,7 +670,6 @@ async def main() -> None:
     log("Pyodide v" + pyodideVersion)
     log("Python v" + pythonVersion)
     log("PyScript config:", pyscriptConfig)
-    log("Configuring app")
     sys.excepthook = mainExceptionHandler
     get_running_loop().set_exception_handler(loopExceptionHandler)
     await ImageBlock.init()

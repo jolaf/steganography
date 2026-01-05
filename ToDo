@@ -1,3 +1,9 @@
+Remove unneeded translation lines from .pot/.po/.mo
+Remove ALL translation lines from en.po/.mo
+Remove spaces between tags, use CSS for spacing
+Exclude digits from translation string
+Add attribute processingL <html lang>, <meta content>, <h1> <div#options>
+Add timestamps to log
 Regenerate at options change
 Lock image (upload, remove)
 Key image (upload, remove)
@@ -7,7 +13,5 @@ Test
 Check Rigging HTML for ideas
 Add "Download All" button
 Make upload button translatable
-Employ gettext
-Fix 100% height
 Reduce width of text input fields
 Create build.py

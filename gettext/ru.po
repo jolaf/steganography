@@ -1,75 +1,79 @@
-msgid ""
-msgstr ""
-"Project-Id-Version: \n"
-"POT-Creation-Date: \n"
-"PO-Revision-Date: \n"
-"Last-Translator: \n"
-"Language-Team: \n"
-"Language: ru\n"
-"MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=UTF-8\n"
-"Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Poedit 3.8\n"
-
 #
 # gettext data for user-visible text in Steganography
 # https://github.com/jolaf/steganography
 #
 # Vasily Zakharov <vmzakhar@gmail.com>, 2026
 #
-#: script.py:121 script.py:122
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: Steganography 1.0\n"
+"POT-Creation-Date: 2026-01-04 23:16+0300\n"
+"PO-Revision-Date: 2026-01-04 23:51+0300\n"
+"Last-Translator: Vasily Zakharov <vmzakhar@gmail.com>\n"
+"Language-Team: Vasily Zakharov <vmzakhar@gmail.com>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: pygettext.py 1.5, gettext-extract 2.0.1\n"
+"X-Generator: Poedit 3.8\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-Poedit-Basepath: ..\n"
+"X-Poedit-SearchPath-0: script.py\n"
+"X-Poedit-SearchPath-1: index.html\n"
+
+#: script.py:245 script.py:246
 msgid "GETTEXT_TEST"
-msgstr "GETTEXT_TEST_PASSED"
+msgstr "GETTEXT_TEST_ru_RU"
 
-#: script.py:415
-msgid "Processing image..."
-msgstr "Обработка изображения…"
+#: script.py:455
+msgid "Processing image"
+msgstr "Обработка изображения"
 
-#: script.py:426
-msgid "ERROR processing image"
-msgstr "ОШИБКА обработки изображения"
+#: script.py:575
+msgid "ERROR"
+msgstr "ОШИБКА"
 
-#: script.py:473 script.py:596
-msgid "ERROR loading image"
-msgstr "ОШИБКА загрузки изображения"
+#: script.py:466
+msgid "processing image"
+msgstr "обработки изображения"
 
-#: script.py:559
+#: script.py:513 script.py:634
+msgid "loading image"
+msgstr "загрузки изображения"
+
+#: script.py:597
 msgid "bytes"
-msgstr "Байт"
+msgstr "байт"
 
-#: script.py:589
-msgid "Loading image..."
-msgstr "Загрузка изображения…"
+#: script.py:627
+msgid "Loading image"
+msgstr "Загрузка изображения"
 
 #: index.html:55
-msgid "(clear the fields to impose no limit)"
-msgstr "(очистите поля для снятия ограничений)"
+msgid "clear the fields to impose no limit"
+msgstr "очистите поля для снятия ограничений"
 
 #: index.html:90
-msgid "(defaults to input image size)"
-msgstr "(по умолчанию равны размеру изображения)"
+msgid "defaults to input image size"
+msgstr "по умолчанию равны размеру изображения"
 
 #: index.html:107
-msgid "(defaults to key size)"
-msgstr "(по умолчанию равны размеру ключа)"
+msgid "defaults to key size"
+msgstr "по умолчанию равны размеру ключа"
 
 #: index.html:37
-msgid ""
-"(if it takes too long, please refresh page or press F12 to check browser "
-"console)"
-msgstr ""
-"(если это занимает слишком много времени, пожалуйста, перезагрузите "
-"страницу или нажмите F12 и проверьте содержимое консоли браузера)"
+msgid "if it takes too long, please refresh page or press F12 to check browser console"
+msgstr "если это занимает слишком много времени, пожалуйста, перезагрузите страницу или нажмите F12 и проверьте содержимое консоли браузера"
 
 #: index.html:68
-msgid "(only specify one value to constraint proportions)"
-msgstr ""
-"(укажите только одно значение, если хотите сохранить пропорции "
-"изображения)"
+msgid "only specify one value to constraint proportions"
+msgstr "укажите только одно значение, если хотите сохранить пропорции изображения"
 
 #: index.html:45
-msgid "(used to generate output file names)"
-msgstr "(используется для формирования имён генерируемых файлов)"
+msgid "used to generate output file names"
+msgstr "используется для формирования имён генерируемых файлов"
 
 #: index.html:8
 msgid "Applied visual cryptography for Larp"
@@ -88,16 +92,16 @@ msgid "Click to upload a file to process"
 msgstr "Нажмите, чтобы загрузить изображение для обработки"
 
 #: index.html:43
-msgid "Do not use /:\\?*'<\">&|"
-msgstr "Не используйте /:\\?*'<\">&|"
+msgid "Do not use"
+msgstr "Не используйте"
 
 #: index.html:136
 msgid "Download"
 msgstr "Скачать"
 
 #: index.html:114
-msgid "Employ dithering:"
-msgstr "Использовать дизеринг:"
+msgid "Employ dithering"
+msgstr "Использовать дизеринг"
 
 #: index.html:2
 msgid "en"
@@ -105,23 +109,23 @@ msgstr "ru"
 
 #: index.html:59 index.html:81 index.html:98
 msgid "factor"
-msgstr "Масштаб"
+msgstr "масштаб"
 
 #: index.html:104 index.html:52 index.html:65 index.html:75 index.html:87
 msgid "height"
-msgstr "Высота"
+msgstr "высота"
 
 #: index.html:36
-msgid "Loading Python, please wait...\n"
-msgstr "Загружаю Python, подождите...\n"
+msgid "Loading Python, please wait"
+msgstr "Загружаю Python, подождите"
 
 #: index.html:132
 msgid "preview"
 msgstr "просмотр"
 
 #: index.html:93
-msgid "Random key rotation:"
-msgstr "Поворот ключа на случайный угол:"
+msgid "Random key rotation"
+msgstr "Поворот ключа на случайный угол"
 
 #: index.html:126
 msgid "Remove"
@@ -132,11 +136,11 @@ msgid "Reset options to defaults"
 msgstr "Сбросить настройки на значения по умолчанию"
 
 #: index.html:110
-msgid "Resize key to lock:"
-msgstr "Масштабировать изображение ключа до размеров изображения замка:"
+msgid "Resize key to lock"
+msgstr "Масштабировать изображение ключа до размеров изображения замка"
 
 #: index.html:118
-msgid "Smoother background:"
+msgid "Smoother background"
 msgstr "Равномерный фон"
 
 #: index.html:10 index.html:11 index.html:35 index.html:4
@@ -144,8 +148,8 @@ msgid "Steganography"
 msgstr "Стеганография"
 
 #: index.html:42
-msgid "Task name:"
-msgstr "Имя задачи:"
+msgid "Task name"
+msgstr "Имя задачи"
 
 #: index.html:101 index.html:49 index.html:62 index.html:72 index.html:84
 msgid "width"
@@ -154,3 +158,35 @@ msgstr "ширина"
 #: index.html:145
 msgid "Vasily Zakharov"
 msgstr "Василий Захаров"
+
+#: index.html
+msgid "Select language"
+msgstr "Выберите язык"
+
+#: index.html
+msgid "Max preview size"
+msgstr "Максимальный размер просмотра"
+
+#: index.html
+msgid "Resize image to"
+msgstr "Масштабировать изображение до"
+
+#: index.html
+msgid "times or"
+msgstr "крат или"
+
+#: index.html
+msgid "Crop image to"
+msgstr "Обрезать изображение до"
+
+#: index.html
+msgid "Key image size"
+msgstr "Размер изображения ключа"
+
+#: index.html
+msgid "Lock image size"
+msgstr "Размер изображения замка"
+
+#: index.html
+msgid "px"
+msgstr "пикселов"
