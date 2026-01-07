@@ -109,6 +109,7 @@ input[type="text"]:user-invalid {
 
 .image-group {
     display: flex;
+    gap: 1rem;
 }
 
 .image-title {

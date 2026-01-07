@@ -189,3 +189,39 @@ msgstr ""
 #: index.html
 msgid "Vasily Zakharov (vmzakhar@gmail.com"
 msgstr ""
+
+#: script.py:526
+msgid "Source image"
+msgstr ""
+
+#: script.py:526
+msgid "Lock image"
+msgstr ""
+
+#: script.py:526
+msgid "Key image"
+msgstr ""
+
+#: script.py:526
+msgid "Processed source image"
+msgstr ""
+
+#: script.py:526
+msgid "Processed lock image"
+msgstr ""
+
+#: script.py:526
+msgid "Processed key image"
+msgstr ""
+
+#: script.py:526
+msgid "Generated lock image"
+msgstr ""
+
+#: script.py:526
+msgid "Generated key image"
+msgstr ""
+
+#: script.py:526
+msgid "Key-over-lock test image"
+msgstr ""

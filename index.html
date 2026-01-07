@@ -18,25 +18,25 @@
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.11.2/core.css">
   <link rel="stylesheet" href="script.css">
-  <script type="module" src="loading.js"></script>
+  <script type="module" src="bootstrap.js"></script>
+  <script type="module" src="https://pyscript.net/releases/2025.11.2/core.js"></script>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-E9101DVB96"></script>
   <script type="module">
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', 'G-E9101DVB96');
+  </script>
+  <script type="module"> // Make sure everything loaded fine
     "use strict";
     /* jshint browser: true */
     /* jshint esversion: 6 */
     if (typeof localLoadingIsWorking === 'undefined') {
-        const logElement = document.getElementById('log')
+        const logElement = document.getElementById('log');
         logElement.textContent = "ERROR: Loading failed, probably because you're running from local files, and browser CORS prevents loading page components.";
-        logElement.classList.add('error')
+        logElement.classList.add('error');
     }
-  </script>
-  <script type="module" src="https://pyscript.net/releases/2025.11.2/core.js"></script>
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-E9101DVB96"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-E9101DVB96');
   </script>
 </head>
 <body>

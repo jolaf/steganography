@@ -23,7 +23,8 @@ from typing import cast, Any, ClassVar
 try:
     from beartype import beartype as typechecked
 except ImportError:
-    print(f"{PREFIX} WARNING: beartype is not available, typing is unchecked")
+    print(f"{PREFIX} WARNING: beartype is not available, running fast with typing unchecked")
+
     def typechecked(func: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[no-redef]
         return func
 
@@ -34,7 +35,7 @@ try:
     def getDefaultTaskName() -> str:
         return cast(str, generate_slug(2))
 except ImportError:
-    print(f"{PREFIX} WARNING: coolname is not available, using 'steganography' as a sample name")
+    print(f'{PREFIX} WARNING: coolname is not available, using "steganography" as default task name')
 
     @typechecked
     def getDefaultTaskName() -> str:
@@ -106,6 +107,7 @@ CHANGE = 'change'
 
 # Class names
 HIDDEN = 'hidden'
+TYPE = 'type'
 
 # Misc
 GETTEXT_TEST = 'GETTEXT_TEST'
@@ -139,7 +141,7 @@ async def repaint() -> None:
 
 @typechecked
 def createObjectURLFromBytes(byteArray: bytes, mimeType: str) -> str:
-    blob = newBlob([newUint8Array(byteArray),], to_js({'type': mimeType}))  # to_js() converts Python dict into JS object
+    blob = newBlob([newUint8Array(byteArray),], to_js({TYPE: mimeType}))  # to_js() converts Python dict into JS object
     return createObjectURL(blob)
 
 @typechecked
@@ -330,7 +332,7 @@ class Options(Storage):
             element.innerHTML = ''.join(f'<option value="{lang}">{name}</option>' for (lang, name) in self.LANGUAGES.items())
         else:  # <INPUT>
             assert element.tagName == INPUT, element.tagName
-            setAttr(element, 'type', CHECKBOX if valueType is bool else TEXT)
+            setAttr(element, TYPE, CHECKBOX if valueType is bool else TEXT)
             for (attr, attrValue) in self.TAG_ATTRIBUTES.get(valueType, {}).items():
                 setAttr(element, attr, attrValue)  # Set <INPUT> element attributes according to valueType
             if name == 'taskName':  # <INPUT type="text">
@@ -434,7 +436,7 @@ class Stage(Enum):
     PROCESSED_KEY = 6
     GENERATED_LOCK = 7
     GENERATED_KEY = 8
-    TEST = 9
+    KEY_OVER_LOCK_TEST = 9
 
 @typechecked
 class ImageBlock:
@@ -448,9 +450,9 @@ class ImageBlock:
         Stage.PROCESSED_SOURCE: (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
         Stage.PROCESSED_LOCK: (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
         Stage.PROCESSED_KEY: (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
-        Stage.GENERATED_LOCK: (Stage.TEST,),
-        Stage.GENERATED_KEY: (Stage.TEST,),
-        Stage.TEST: (),
+        Stage.GENERATED_LOCK: (Stage.KEY_OVER_LOCK_TEST,),
+        Stage.GENERATED_KEY: (Stage.KEY_OVER_LOCK_TEST,),
+        Stage.KEY_OVER_LOCK_TEST: (),
     }
 
     ImageBlocks: ClassVar[dict[Stage, ImageBlock]] = {}
@@ -496,7 +498,7 @@ class ImageBlock:
         if not cls.ImageBlocks[Stage.PROCESSED_SOURCE].image:
             return
         await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY), synthesize, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY))
-        await cls.process(Stage.TEST, testOverlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY))  # ToDo: Somehow handle random rotation and location
+        await cls.process(Stage.KEY_OVER_LOCK_TEST, testOverlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY))  # ToDo: Somehow handle random rotation and location
 
     def __init__(self, stage: Stage) -> None:
         self.name = stage.name.lower()
@@ -522,7 +524,7 @@ class ImageBlock:
                     break
 
         # Adjust children attributes
-        self.setAttr('title', TEXT, self.name.capitalize() + " file")  # ToDo: Translate
+        self.setAttr('title', TEXT, _(' '.join(self.name.split('_')).capitalize() + " image"))
 
         if self.isUpload:
             self.hide('description')
@@ -530,6 +532,7 @@ class ImageBlock:
         else:
             self.hide('upload-block')
 
+        # Loading image stored in cache, if any
         (imageBytes, fileName) = self.loadFile()
         if imageBytes:
             try:
