@@ -19,34 +19,34 @@ msgstr ""
 "X-Generator: Poedit 3.8\n"
 "X-Poedit-SourceCharset: UTF-8\n"
 "X-Poedit-Basepath: ..\n"
-"X-Poedit-SearchPath-0: script.py\n"
+"X-Poedit-SearchPath-0: main.py\n"
 "X-Poedit-SearchPath-1: index.html\n"
 
-#: script.py:245 script.py:246
+#: main.py:245 main.py:246
 msgid "GETTEXT_TEST"
 msgstr ""
 
-#: script.py:455
+#: main.py:455
 msgid "Processing image"
 msgstr ""
 
-#: script.py:575
+#: main.py:575
 msgid "ERROR"
 msgstr ""
 
-#: script.py:466
+#: main.py:466
 msgid "processing image"
 msgstr ""
 
-#: script.py:513 script.py:634
+#: main.py:513 main.py:634
 msgid "loading image"
 msgstr ""
 
-#: script.py:597
+#: main.py:597
 msgid "bytes"
 msgstr ""
 
-#: script.py:627
+#: main.py:627
 msgid "Loading image"
 msgstr ""
 
@@ -190,38 +190,38 @@ msgstr ""
 msgid "Vasily Zakharov (vmzakhar@gmail.com"
 msgstr ""
 
-#: script.py:526
+#: main.py:526
 msgid "Source image"
 msgstr ""
 
-#: script.py:526
+#: main.py:526
 msgid "Lock image"
 msgstr ""
 
-#: script.py:526
+#: main.py:526
 msgid "Key image"
 msgstr ""
 
-#: script.py:526
+#: main.py:526
 msgid "Processed source image"
 msgstr ""
 
-#: script.py:526
+#: main.py:526
 msgid "Processed lock image"
 msgstr ""
 
-#: script.py:526
+#: main.py:526
 msgid "Processed key image"
 msgstr ""
 
-#: script.py:526
+#: main.py:526
 msgid "Generated lock image"
 msgstr ""
 
-#: script.py:526
+#: main.py:526
 msgid "Generated key image"
 msgstr ""
 
-#: script.py:526
+#: main.py:526
 msgid "Key-over-lock test image"
 msgstr ""

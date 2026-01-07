@@ -20,9 +20,9 @@ msgstr ""
 "X-Generator: Poedit 3.8\n"
 "X-Poedit-SourceCharset: UTF-8\n"
 "X-Poedit-Basepath: ..\n"
-"X-Poedit-SearchPath-0: script.py\n"
+"X-Poedit-SearchPath-0: main.py\n"
 "X-Poedit-SearchPath-1: index.html\n"
 
-#: script.py:245 script.py:246
+#: main.py:245 main.py:246
 msgid "GETTEXT_TEST"
 msgstr "GETTEXT_TEST_en_US"

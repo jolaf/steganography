@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Steganography 1.0\n"
 "POT-Creation-Date: 2026-01-05 14:31+0300\n"
-"PO-Revision-Date: 2026-01-07 23:00+0300\n"
+"PO-Revision-Date: 2026-01-08 02:39+0300\n"
 "Last-Translator: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language-Team: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language: ru\n"
@@ -20,34 +20,34 @@ msgstr ""
 "X-Generator: Poedit 3.8\n"
 "X-Poedit-SourceCharset: UTF-8\n"
 "X-Poedit-Basepath: ..\n"
-"X-Poedit-SearchPath-0: script.py\n"
+"X-Poedit-SearchPath-0: main.py\n"
 "X-Poedit-SearchPath-1: index.html\n"
 
-#: script.py:245 script.py:246
+#: main.py:245 main.py:246
 msgid "GETTEXT_TEST"
 msgstr "GETTEXT_TEST_ru_RU"
 
-#: script.py:455
+#: main.py:455
 msgid "Processing image"
 msgstr "Обработка изображения"
 
-#: script.py:575
+#: main.py:575
 msgid "ERROR"
 msgstr "ОШИБКА"
 
-#: script.py:466
+#: main.py:466
 msgid "processing image"
 msgstr "обработки изображения"
 
-#: script.py:513 script.py:634
+#: main.py:513 main.py:634
 msgid "loading image"
 msgstr "загрузки изображения"
 
-#: script.py:597
+#: main.py:597
 msgid "bytes"
 msgstr "байт"
 
-#: script.py:627
+#: main.py:627
 msgid "Loading image"
 msgstr "Загрузка изображения"
 
@@ -190,47 +190,38 @@ msgstr "пикселов"
 msgid "Vasily Zakharov (vmzakhar@gmail.com"
 msgstr "Василий Захаров (vmzakhar@gmail.com"
 
-#: script.py:526
+#: main.py:526
 msgid "Source image"
 msgstr "Исходный рисунок"
 
-#: script.py:526
+#: main.py:526
 msgid "Lock image"
 msgstr "Рисунок замка"
 
-#: script.py:526
+#: main.py:526
 msgid "Key image"
 msgstr "Рисунок ключа"
 
-#: script.py:526
+#: main.py:526
 msgid "Processed source image"
 msgstr "Обработанный исходный рисунок"
 
-#: script.py:526
+#: main.py:526
 msgid "Processed lock image"
 msgstr "Обработанный рисунок замка"
 
-#: script.py:526
+#: main.py:526
 msgid "Processed key image"
 msgstr "Обработанный рисунок ключа"
 
-#: script.py:526
+#: main.py:526
 msgid "Generated lock image"
 msgstr "Готовый рисунок замка"
 
-#: script.py:526
+#: main.py:526
 msgid "Generated key image"
 msgstr "Готовый рисунок ключа"
 
-#: script.py:526
+#: main.py:526
 msgid "Key-over-lock test image"
 msgstr "Тест наложения ключа на замок"
-
-#~ msgid "Lock file"
-#~ msgstr "Рисунок замка"
-
-#~ msgid "Key file"
-#~ msgstr "Рисунок ключа"
-
-#~ msgid "Test file"
-#~ msgstr "Тест наложения ключа на замок"
