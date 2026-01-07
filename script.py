@@ -18,7 +18,7 @@ import sys
 from sys import version as pythonVersion
 from traceback import extract_tb
 from types import TracebackType  # noqa: TC003
-from typing import cast, Any, ClassVar, TYPE_CHECKING
+from typing import cast, Any, ClassVar
 
 try:
     from beartype import beartype as typechecked
@@ -54,75 +54,24 @@ except ImportError:
         urls = tuple(url for url in (element.src for element in page['script']) if url.endswith('core.js'))
         pyscriptVersion = urls[0].split('/')[-2] if urls else "UNKNOWN"
 
-if TYPE_CHECKING:  # This branch is for IDEs and mypy only, beartype ignores it
-    from pyscript.events import Event
+from js import location, Blob, CSSStyleSheet, Event, Node, NodeFilter, Text, Uint8Array, URL
+from pyodide.ffi import JsNull, JsProxy  # pylint: disable=import-error, no-name-in-module
 
-    # Workarounds for mypy, for things that do not have proper typing stubs (yet?)
-    class Blob:  # ToDo: Move these to stubs?
-        async def arrayBuffer(self) -> int: ...  # pylint: disable=no-self-use
+# We'll redefine these classes to JsProxy below, so we have to save all references we actually need
+newCSSStyleSheet = CSSStyleSheet.new
+newBlob = Blob.new
+newUint8Array = Uint8Array.new
+newEvent = Event.new
 
-    class ArrayBuffer:
-        def to_bytes(self) -> bytes: ...  # pylint: disable=no-self-use
-
-    class CSSStyleSheet:
-        def replaceSync(self, _text: str) -> None: ...  # pylint: disable=no-self-use
-
-    class JsNull: ...
-
-    class JsProxy:
-        nodeType: int
-        nodeValue: str
-        def append(self, *_args: Node | str) -> None: ...  # pylint: disable=no-self-use
-        async def arrayBuffer(self) -> ArrayBuffer: ...  # pylint: disable=no-self-use
-
-    class Node:
-        TEXT_NODE: ClassVar[int]
-        nodeType: int
-        nodeValue: str
-        def append(self, *_args: Node | str) -> None: ...  # pylint: disable=no-self-use
-
-    class NodeFilter:
-        SHOW_TEXT: ClassVar[int]
-
-    class Text(Node): ...
-
-    class TreeWalker:
-        currentNode: JsProxy
-        def nextNode(self) -> Node: ...  # pylint: disable=no-self-use
-
-    class Uint8Array: ...
-
-    def newCSSStyleSheet() -> CSSStyleSheet: ...
-    def newBlob(_blobParts: Iterable[Any], _options: Any) -> Blob: ...
-    def newUint8Array(_bytes: bytes) -> Uint8Array: ...
-    def newEvent(_name: str) -> Event: ...
-    def createObjectURL(_blob: Blob) -> str: ...
-    def revokeObjectURL(_url: str) -> None: ...
-    def createTreeWalker(_root: Element | JsProxy, _whatToShow: int | None = ..., _filter: Any | None = ...) -> TreeWalker: ...
-    def querySelectorAll(_selector: str) -> Iterable[Element]: ...
-    def reload() -> None: ...
-    adoptedStyleSheets = Any
-else:  # beartype follows this branch
-    from js import location, Blob, CSSStyleSheet, Event, Node, NodeFilter, Text, TreeWalker, Uint8Array, URL  # type: ignore[attr-defined]
-    # noinspection PyUnresolvedReferences
-    from pyodide.ffi import JsNull, JsProxy
-
-    # We'll redefine these classes to JsProxy below, so we have to save all needed references
-    newCSSStyleSheet = CSSStyleSheet.new
-    newBlob = Blob.new
-    newUint8Array = Uint8Array.new
-    newEvent = Event.new
-
-    # Simplifying addressing to JS functions
-    createObjectURL = URL.createObjectURL
-    revokeObjectURL = URL.revokeObjectURL
-    del URL  # We won't need it anymore
-    adoptedStyleSheets = document.adoptedStyleSheets
-    createTreeWalker = document.createTreeWalker
-    querySelectorAll = document.querySelectorAll
-    del document  # We won't need it anymore
-    reload = location.reload
-    del location  # We won't need it anymore
+# Simplifying addressing to JS functions
+createObjectURL = URL.createObjectURL
+revokeObjectURL = URL.revokeObjectURL
+del URL  # We won't need it anymore
+adoptedStyleSheets = document.adoptedStyleSheets
+createTreeWalker = document.createTreeWalker
+del document  # We won't need it anymore
+reload = location.reload
+del location  # We won't need it anymore
 
 TEXT_NODE = Node.TEXT_NODE
 
