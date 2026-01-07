@@ -1,0 +1,3 @@
+[submodule "pyscript-stubs"]
+	path = pyscript-stubs
+	url = https://github.com/jolaf/pyscript-stubs.git

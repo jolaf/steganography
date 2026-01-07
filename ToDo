@@ -1,5 +1,5 @@
+Translate h2
 Provide proper instructions if loading fails: github pages, python web server, npm web server, turn off CORS
-Add attribute processing <html lang>, <meta content>, <h1> <div#options>
 Regenerate at options change
 Lock image (upload, remove)
 Key image (upload, remove)
@@ -9,4 +9,5 @@ Test
 Check Rigging HTML for ideas
 Add "Download All" button
 Make upload button translatable
+Test with offline PyScript
 Create build.py

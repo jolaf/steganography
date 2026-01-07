@@ -4,7 +4,7 @@
   <title>Steganography</title>
   <meta charset="utf-8">
   <meta name="author" content="Vasily Zakharov (vmzakhar@gmail.com)">
-  <meta name="keywords" content="steganography larp">
+  <meta name="keywords" content="steganography larp стеганография РИ">
   <meta name="description" content="Applied visual cryptography for Larp">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="apple-mobile-web-app-title" content="Steganography">
@@ -20,20 +20,13 @@
   <link rel="stylesheet" href="script.css">
   <script type="module" src="loading.js"></script>
   <script type="module">
-    let location = window.location;
-    let locationName;
-    if (location.protocol === 'file:') {
-        locationName = 'files';
-    } else if (location.hostname === 'localhost') {
-        locationName = (location.port === '63342') ? 'PyCharm' : 'localhost';
-    } else if (location.hostname.endsWith('github.io')) {
-        locationName = 'GitHub Pages';
-    } else {
-        locationName = location.host;
-    }
-    document.getElementById('location').textContent = '/' + locationName;
+    "use strict";
+    /* jshint browser: true */
+    /* jshint esversion: 6 */
     if (typeof localLoadingIsWorking === 'undefined') {
-        document.getElementById('log').textContent = 'ERROR: Loading failed, probably because you\'re running from local files, and browser CORS prevents loading page components.';
+        const logElement = document.getElementById('log')
+        logElement.textContent = "ERROR: Loading failed, probably because you're running from local files, and browser CORS prevents loading page components.";
+        logElement.classList.add('error')
     }
   </script>
   <script type="module" src="https://pyscript.net/releases/2025.11.2/core.js"></script>
@@ -49,8 +42,8 @@
 <body>
 <script type="py" src="script.py" config="pyscript.toml" target="log"></script>
 <div id="all">
-  <h1><img alt="" src="images/favicon.svg">Steganography<span id="location"></span></h1>
-  <h3>Applied visual cryptography for Larp</h3>
+  <h1 id="title"><img alt="" src="images/favicon.svg">Steganography<span id="location"></span></h1>
+  <h3 id="subtitle">Applied visual cryptography for Larp</h3>
   <pre id="log">Loading, please wait...
 <span>(if it takes too long, please refresh page or press F12 to check browser console)</span>
 </pre>
@@ -62,7 +55,7 @@
       </div>
       <div id="option-task-name-block">
         <label for="option-task-name">Task name:</label>
-        <input id="option-task-name" maxlength="40" placeholder="Do not use /:\?*'&lt;&quot;&gt;&amp;|" title="Do not use /:\?*'&lt;&quot;&gt;&amp;|" autocomplete="on">
+        <input id="option-task-name">
         <span>(used to generate output file names)</span>
       </div>
       <div id="option-preview-size-block">
@@ -144,30 +137,30 @@
     <div id="template" class="image-block hidden">
       <h2 class="image-title"></h2>
       <div class="image-upload-block">
-        <button class="image-remove hidden">Remove</button>
+        <button class="image-remove hidden" title="Click to remove this image from processing">Remove</button>
         <input class="image-upload" title="Click to upload a file to process" type="file" accept="image/*">
       </div>
-      <label class="image-description hidden"></label>
+      <label class="image-description hidden" for="template-image-download"></label>
       <div class="image-display-block hidden">
         <a class="image-display-link" title="Click for full screen preview" target="_blank" href="">
           <img class="image-display" alt="preview" src=".">
         </a>
         <br>
-        <a class="image-download-link" title="Click to download to your computer" download="" href="">
-          <button class="image-download">Download</button>
-          <label class="image-name"></label>
+        <a class="image-download-link" title="Click to download to your device" download="" href="">
+          <button id="template-image-download" class="image-download">Download</button>
+          <label class="image-name" for="template-image-download"></label>
         </a>
       </div>
     </div>
-    <div id="uploaded"></div>
-    <div id="processed"></div>
-    <div id="generated"></div>
-    <div id="footer">
-      <table><tr>
-        <td><p>© <a href="https://vk.com/jolaf">Vasily Zakharov</a> 2026</p></td>
-        <td><p id="build">dev</p></td>
-      </tr></table>
-    </div>
+    <div id="uploaded" class="image-group"></div>
+    <div id="processed" class="image-group"></div>
+    <div id="generated" class="image-group"></div>
+  </div>
+  <div id="footer">
+    <table><tr>
+      <td><p>© <a href="https://vk.com/jolaf">Vasily Zakharov</a> 2026</p></td>
+      <td><p id="build">dev</p></td>
+    </tr></table>
   </div>
 </div>
 </body>

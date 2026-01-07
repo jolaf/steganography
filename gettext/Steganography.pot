@@ -74,12 +74,16 @@ msgstr ""
 msgid "Applied visual cryptography for Larp"
 msgstr ""
 
+# index.html
+msgid "Click to remove this image from processing"
+msgstr ""
+
 #: index.html:131
 msgid "Click for full screen preview"
 msgstr ""
 
 #: index.html:135
-msgid "Click to download to your computer"
+msgid "Click to download to your device"
 msgstr ""
 
 #: index.html:127
@@ -180,4 +184,8 @@ msgstr ""
 
 #: index.html
 msgid "px"
+msgstr ""
+
+#: index.html
+msgid "Vasily Zakharov (vmzakhar@gmail.com"
 msgstr ""

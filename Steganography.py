@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from io import BytesIO
 from mimetypes import guess_type
 from random import randint
 from re import split
 from sys import argv, exit as sysExit, stderr
-from typing import cast, Any, Final, IO
+from typing import Any, Final, IO
 
 try:
     from beartype import beartype as typechecked
@@ -105,9 +105,9 @@ def processImage(image: Image, **options: Any) -> Image:
     # - rotate: bool
     # - dither: bool
     processed = grayscale = image.convert("L")  # 8-bit grayscale
-    if (resize := cast(int | tuple[int | None, int | None], options.get('resize'))) not in (None, 0, 1, (), (None, None)):  # int size tuple or float factor
+    if (resize := options.get('resize')) not in (None, 0, 1, (), (None, None)):  # int size tuple or float factor
         assert resize
-        if isinstance(resize, Iterable):
+        if isinstance(resize, Sequence):
             assert len(resize) == 2 and all(r is None or isinstance(r, int) for r in resize) and any(isinstance(r, int) for r in resize), f"Bad resize options: {resize!r}"  # noqa: PT018
             for r in resize:
                 if r is not None:
@@ -120,7 +120,7 @@ def processImage(image: Image, **options: Any) -> Image:
                 resize = (resize[0], round(float(image.size[1]) * resize[0] / image.size[0]))
         else:  # resize is factor
             assert isinstance(resize, (int, float)), f"Bad resize options: {resize!r}"
-            resize = tuple(round(d * resize) for d in image.size)  # type: ignore[assignment]
+            resize = tuple(round(d * resize) for d in image.size)
         assert isinstance(resize, tuple) and len(resize) == 2 and all(isinstance(r, int) for r in resize), repr(resize) # noqa: PT018
         processed = processed.resize(resize, Resampling.BICUBIC)
     if options.get('rotate'):  # bool. # ToDo: Should we save rotate angle somewhere?

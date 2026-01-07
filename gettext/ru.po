@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Steganography 1.0\n"
 "POT-Creation-Date: 2026-01-05 14:31+0300\n"
-"PO-Revision-Date: 2026-01-05 14:35+0300\n"
+"PO-Revision-Date: 2026-01-07 17:39+0300\n"
 "Last-Translator: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language-Team: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language: ru\n"
@@ -65,7 +65,7 @@ msgstr "по умолчанию равны размеру ключа"
 
 #: index.html:68
 msgid "only specify one value to constrain proportions"
-msgstr "укажите только одно значение, если хотите сохранить пропорции изображения"
+msgstr "указывайте только одно из значений, если хотите сохранить пропорции изображения"
 
 #: index.html:45
 msgid "used to generate output file names"
@@ -73,15 +73,18 @@ msgstr "используется для формирования имён ген
 
 #: index.html:8
 msgid "Applied visual cryptography for Larp"
-msgstr "Прикладная визуальная криптография для ролевых игр живого действия"
+msgstr "Прикладная визуальная криптография для РИ"
+
+msgid "Click to remove this image from processing"
+msgstr "Нажмите, чтобы убрать это изображение из обработки"
 
 #: index.html:131
 msgid "Click for full screen preview"
 msgstr "Нажмите, чтобы открыть изображение во весь экран"
 
 #: index.html:135
-msgid "Click to download to your computer"
-msgstr "Нажмите, чтобы скачать изображение на ваш компьютер"
+msgid "Click to download to your device"
+msgstr "Нажмите, чтобы скачать изображение на ваше устройство"
 
 #: index.html:127
 msgid "Click to upload a file to process"
@@ -125,7 +128,7 @@ msgstr "Поворот ключа на случайный угол"
 
 #: index.html:126
 msgid "Remove"
-msgstr "Удалить"
+msgstr "Убрать"
 
 #: index.html:121
 msgid "Reset options to defaults"
@@ -182,3 +185,7 @@ msgstr "Размер изображения замка"
 #: index.html
 msgid "px"
 msgstr "пикселов"
+
+#: index.html
+msgid "Vasily Zakharov (vmzakhar@gmail.com"
+msgstr "Василий Захаров (vmzakhar@gmail.com"

@@ -2,13 +2,15 @@
 # Note: this module is PyScript-only, it won't work outside of browser
 from __future__ import annotations
 
-print("[python] Loading app")
+PREFIX = "[python]"
+print(f"{PREFIX} Loading app")
 
-from asyncio import create_task, get_running_loop, sleep, AbstractEventLoop
+from asyncio import create_task, gather, get_running_loop, sleep, AbstractEventLoop
 from collections.abc import Callable, Iterable, Iterator, Mapping  # noqa: TC003
 from contextlib import suppress
 from datetime import datetime
 from enum import Enum
+# noinspection PyUnresolvedReferences
 from gettext import translation, GNUTranslations
 from itertools import chain
 from re import findall, match, split
@@ -19,73 +21,95 @@ from types import TracebackType  # noqa: TC003
 from typing import cast, Any, ClassVar, TYPE_CHECKING
 
 try:
-    from coolname import generate_slug  # type: ignore[attr-defined]
-    def getRandomName() -> str:
-        return cast(str, generate_slug(2))
-except ImportError:
-    print("[python] WARNING: coolname is not available, using 'steganography' as a sample name")
-    def getRandomName() -> str:
-        return 'steganography'
-
-try:
     from beartype import beartype as typechecked
 except ImportError:
-    print("[python] WARNING: beartype is not available, typing is unchecked")
+    print(f"{PREFIX} WARNING: beartype is not available, typing is unchecked")
     def typechecked(func: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[no-redef]
         return func
 
-from pyscript import config as pyscriptConfig, when, storage, Storage  # type: ignore[attr-defined]  # pylint: disable=no-name-in-module
-from pyscript.web import page  # type: ignore[import-not-found]  # pylint: disable=import-error, no-name-in-module
-from pyscript.ffi import to_js  # type: ignore[import-not-found]  # pylint: disable=import-error, no-name-in-module
+try:
+    from coolname import generate_slug  # type: ignore[attr-defined]
+
+    @typechecked
+    def getDefaultTaskName() -> str:
+        return cast(str, generate_slug(2))
+except ImportError:
+    print(f"{PREFIX} WARNING: coolname is not available, using 'steganography' as a sample name")
+
+    @typechecked
+    def getDefaultTaskName() -> str:
+        return "steganography"
+
+# noinspection PyUnresolvedReferences
+from pyscript import config as pyscriptConfig, document, when, storage, Storage
+from pyscript.web import page, Element  # pylint: disable=import-error, no-name-in-module
+from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
 
 try:  # Try to identify PyScript version
     from pyscript import version as pyscriptVersion  # type: ignore[attr-defined]
 except ImportError:
     try:
-        from pyscript import __version__ as pyscriptVersion
+        from pyscript import __version__ as pyscriptVersion  # type: ignore[attr-defined]
     except ImportError:
-        urls = tuple(url for url in (tag.src for tag in page['script']) if url.endswith('core.js'))
+        urls = tuple(url for url in (element.src for element in page['script']) if url.endswith('core.js'))
         pyscriptVersion = urls[0].split('/')[-2] if urls else "UNKNOWN"
 
-if TYPE_CHECKING:
-    def _(s: str) -> str:  # stub for gettext string wrapper
-        return s
+if TYPE_CHECKING:  # This branch is for IDEs and mypy only, beartype ignores it
+    from pyscript.events import Event
 
-    # Workarounds for mypy, as stuff cannot be imported from PyScript when not in a browser
-    type Element = Any
-    Node = Any  # beartype objects if we use 'type' here
-    NodeFilter = Any  # beartype objects if we use 'type' here
-    type TreeWalker = Any
+    # Workarounds for mypy, for things that do not have proper typing stubs (yet?)
+    class Blob:  # ToDo: Move these to stubs?
+        async def arrayBuffer(self) -> int: ...  # pylint: disable=no-self-use
 
-    def newCSSStyleSheet() -> CSSStyleSheet:
-        pass
-    def newBlob(_blobParts: Iterable[Any], _options: Any) -> Blob:
-        pass
-    def newFile(_fileBits: Iterable[Any], _fileName: str, _options: Any) -> File:
-        pass
-    def newUint8Array(_bytes: bytes) -> Uint8Array:
-        pass
-    def newEvent(_name: str) -> Event:
-        pass
-    def createObjectURL(_file: File) -> str:
-        return ''
-    def revokeObjectURL(_url: str) -> None:
-        pass
-    def createTreeWalker(_root: Element, _whatToShow: int = -1, _filter: Callable[[Node], int] | None = None) -> TreeWalker:
-        pass
-    def reload() -> None:
-        pass
+    class ArrayBuffer:
+        def to_bytes(self) -> bytes: ...  # pylint: disable=no-self-use
+
+    class CSSStyleSheet:
+        def replaceSync(self, _text: str) -> None: ...  # pylint: disable=no-self-use
+
+    class JsNull: ...
+
+    class JsProxy:
+        nodeType: int
+        nodeValue: str
+        def append(self, *_args: Node | str) -> None: ...  # pylint: disable=no-self-use
+        async def arrayBuffer(self) -> ArrayBuffer: ...  # pylint: disable=no-self-use
+
+    class Node:
+        TEXT_NODE: ClassVar[int]
+        nodeType: int
+        nodeValue: str
+        def append(self, *_args: Node | str) -> None: ...  # pylint: disable=no-self-use
+
+    class NodeFilter:
+        SHOW_TEXT: ClassVar[int]
+
+    class Text(Node): ...
+
+    class TreeWalker:
+        currentNode: JsProxy
+        def nextNode(self) -> Node: ...  # pylint: disable=no-self-use
+
+    class Uint8Array: ...
+
+    def newCSSStyleSheet() -> CSSStyleSheet: ...
+    def newBlob(_blobParts: Iterable[Any], _options: Any) -> Blob: ...
+    def newUint8Array(_bytes: bytes) -> Uint8Array: ...
+    def newEvent(_name: str) -> Event: ...
+    def createObjectURL(_blob: Blob) -> str: ...
+    def revokeObjectURL(_url: str) -> None: ...
+    def createTreeWalker(_root: Element | JsProxy, _whatToShow: int | None = ..., _filter: Any | None = ...) -> TreeWalker: ...
+    def querySelectorAll(_selector: str) -> Iterable[Element]: ...
+    def reload() -> None: ...
     adoptedStyleSheets = Any
-else:
-    from pyscript import document  # type: ignore[attr-defined]
-    from pyscript.web import Element  # type: ignore[import-not-found]
+else:  # beartype follows this branch
+    from js import location, Blob, CSSStyleSheet, Event, Node, NodeFilter, Text, TreeWalker, Uint8Array, URL  # type: ignore[attr-defined]
+    # noinspection PyUnresolvedReferences
+    from pyodide.ffi import JsNull, JsProxy
 
-    from js import location, Blob, CSSStyleSheet, Event, File, Node, NodeFilter, Text, TreeWalker, Uint8Array, URL  # type: ignore[attr-defined]
-
-    # We'll redefine these classes to Any below, so we have to save all needed references
+    # We'll redefine these classes to JsProxy below, so we have to save all needed references
     newCSSStyleSheet = CSSStyleSheet.new
     newBlob = Blob.new
-    newFile = File.new
     newUint8Array = Uint8Array.new
     newEvent = Event.new
 
@@ -95,22 +119,20 @@ else:
     del URL  # We won't need it anymore
     adoptedStyleSheets = document.adoptedStyleSheets
     createTreeWalker = document.createTreeWalker
+    querySelectorAll = document.querySelectorAll
     del document  # We won't need it anymore
     reload = location.reload
     del location  # We won't need it anymore
 
+TEXT_NODE = Node.TEXT_NODE
+
 # JS types that don't work as runtime type annotations
 # noinspection PyTypeAliasRedeclaration
-type CSSStyleSheet = Any
-Blob = Any  # beartype objects if we use 'type' here
+type Blob = JsProxy  # type: ignore[no-redef]
 # noinspection PyTypeAliasRedeclaration
-type Event = Any  # Neither PyScript nor JS versions work as runtime type annotation
+type Event = JsProxy  # type: ignore[no-redef]
 # noinspection PyTypeAliasRedeclaration
-type File = Any
-# noinspection PyTypeAliasRedeclaration
-type Text = Any
-# noinspection PyTypeAliasRedeclaration
-type Uint8Array = Any
+type Node = JsProxy  # type: ignore[no-redef]
 
 try:
     from pyodide_js import version as pyodideVersion  # type: ignore[import-not-found]
@@ -121,22 +143,41 @@ from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, load
 
 TagAttrValue = str | int | float | bool
 
+# Tag names
+INPUT = 'INPUT'
+SELECT = 'SELECT'
+
+# <INPUT> types
+TEXT = 'text'  # Also is used as a shortcut for innerText attribute
+CHECKBOX = 'checkbox'
+
 # Event names
 CLICK = 'click'
 CHANGE = 'change'
 
-TEXT = 'text'  # Shortcut for innerText attribute
+# Class names
+HIDDEN = 'hidden'
+
+# Misc
+GETTEXT_TEST = 'GETTEXT_TEST'
+
+@typechecked
+def _(s: str) -> str:  # Will be replaced by gettext
+    return s
+
+@typechecked
+def toJsElement(element: Element | JsProxy) -> JsProxy:
+    return getattr(element, '_dom_element', element)  # type: ignore[arg-type]
 
 @typechecked
 def log(*args: Any) -> None:
     message = ' '.join(str(arg) for arg in args)
-    print("[python]", message)
-    logTag = getTagByID('log')
-    # noinspection PyProtectedMember
-    logTag._dom_element.append(f"{datetime.now().astimezone().strftime('%H:%M:%S')} [python] {message}\n")  # We have to use _dom_element because PyScript version of append() is not working with strings as of v2025.11.2  # noqa: SLF001  # pylint: disable=protected-access
-    test = message.lower()
-    if any(word in test for word in ('error', 'exception')):
-        logTag.classes.add('error')
+    print(f"{PREFIX} {message}")
+    logElement = getElementByID('log')
+    toJsElement(logElement).append(f"{datetime.now().astimezone().strftime('%H:%M:%S')} {PREFIX} {message}\n")  # ToDo: file it?  # We have to use toJsElement() because PyScript version of append() is not working with strings as of v2025.11.2
+    test = message.upper()
+    if any(word in test for word in ('ERROR', 'EXCEPTION')):
+        logElement.classes.add('error')
 
 @typechecked
 def getFileNameFromPath(path: str) -> str:
@@ -149,88 +190,103 @@ async def repaint() -> None:
 
 @typechecked
 def createObjectURLFromBytes(byteArray: bytes, mimeType: str) -> str:
-    if isinstance(byteArray, bytes):
-        byteArray = newUint8Array(byteArray)
-    blob = newBlob([byteArray,], to_js({'type': mimeType}))  # to_js() converts Python dict into JS object
+    blob = newBlob([newUint8Array(byteArray),], to_js({'type': mimeType}))  # to_js() converts Python dict into JS object
     return createObjectURL(blob)
 
 @typechecked
 async def blobToBytes(blob: Blob) -> bytes:
-    return cast(bytes, (await blob.arrayBuffer()).to_bytes())
+    return (await blob.arrayBuffer()).to_bytes()
 
 @typechecked
-def getTagByID(tagID: str) -> Element:
+def getElementByID(elementID: str) -> Element:
     try:
-        return page['#' + tagID][0]
+        return page['#' + elementID][0]
     except IndexError:
-        log("ERROR at getTagByID(): No tag ID found:", tagID)
+        log("ERROR at getElementByID(): No element ID found:", elementID)
         raise
 
 @typechecked
 def hide(element: str | Element) -> None:
     if isinstance(element, str):
-        element = getTagByID(element)
-    element.classes.add('hidden')
+        element = getElementByID(element)
+    element.classes.add(HIDDEN)
 
 @typechecked
 def show(element: str | Element) -> None:
     if isinstance(element, str):
-        element = getTagByID(element)
-    element.classes.remove('hidden')
+        element = getElementByID(element)
+    element.classes.remove(HIDDEN)
 
 @typechecked
-def getAttr(element: str | Element, attr: str) -> str:
+def getAttr(element: str | Element, attr: str, default: str | None = None) -> str | None:
     if isinstance(element, str):
-        element = getTagByID(element)
-    if attr == TEXT:
-        return cast(str, element.textContent)
-    return cast(str, element.getAttribute(attr))
+        element = getElementByID(element)
+    assert isinstance(element, Element), type(element).__name__
+    ret = element.textContent if attr == TEXT else element.getAttribute(attr)
+    return default if ret is None or isinstance(ret, JsNull) else ret
 
 @typechecked
 def setAttr(element: str | Element, attr: str, value: TagAttrValue, onlyIfAbsent: bool = False) -> None:
     if isinstance(element, str):
-        element = getTagByID(element)
+        element = getElementByID(element)
     if attr == TEXT:
         if not onlyIfAbsent or not element.textContent:
+            assert isinstance(value, str), type(value).__name__
             element.textContent = value
     elif not onlyIfAbsent or not element.getAttribute(attr):
         element.setAttribute(attr, value)
 
 @typechecked
+def resetInput(element: str | Element) -> None:
+    if isinstance(element, str):
+        element = getElementByID(element)
+    if element.tagName != INPUT:
+        return
+    if element.type == CHECKBOX:
+        element.checked = (getAttr(element, 'checked') == 'true')  # pylint: disable=superfluous-parens
+    else:
+        element.value = getAttr(element, 'value')
+    dispatchEvent(element, CHANGE)
+
+@typechecked
 def dispatchEvent(element: str | Element, eventType: str) -> None:
     if isinstance(element, str):
-        element = getTagByID(element)
+        element = getElementByID(element)
     element.dispatchEvent(newEvent(eventType))
 
 @typechecked
-def iterTextNodes(root: Element | None = None) -> Iterator[Text]:
-    # noinspection PyProtectedMember
-    walker = createTreeWalker((root or page.html)._dom_element, NodeFilter.SHOW_TEXT)  # noqa: SLF001  # pylint: disable=protected-access
+def iterTextNodes(root: Element | JsProxy | None = None) -> Iterator[Node]:
+    walker = createTreeWalker(toJsElement(root or page.html), NodeFilter.SHOW_TEXT)
     while node := walker.nextNode():
-        assert node.nodeType == Node.TEXT_NODE, node.nodeType
+        assert node.nodeType == TEXT_NODE, node.nodeType
+        # noinspection PyTypeChecker
         yield node
 
 @typechecked
-class Options(Storage):  # type: ignore[misc, no-any-unimported]
-    TAG_ARGS: ClassVar[Mapping[type[TagAttrValue], Mapping[str, TagAttrValue]]] = {
-        str: {
-        },
+class Options(Storage):
+    TAG_ATTRIBUTES: ClassVar[Mapping[type[TagAttrValue], Mapping[str, TagAttrValue]]] = {
         int: {
             'inputmode': 'numeric',
-            'placeholder': 'integer',
+            'maxlength': 4,
+            'title': "integer",
+            'placeholder': "0000",
             'pattern': r'[0-9]+',
-            'default': 0,
         },
         float: {
             'inputmode': 'decimal',
-            'placeholder': 'float',
+            'maxlength': 4,
+            'title': "float",
+            'placeholder': "0.00",
             'pattern': r'\.[0-9]{1,2}|[0-9]+\.[0-9]{1,2}|[0-9]+\.?',
-            'default': 1.0,
         },
-        bool: {
-            'type': 'checkbox',
-            'default': False,
-        },
+    }
+
+    TRANSLATABLE_TAG_ATTRS: ClassVar[Mapping[str, Iterable[str]]] = {
+        'HTML'  : ('lang',),
+        'META'  : ('content',),
+        'A'     : ('title',),
+        'BUTTON': ('title',),
+         INPUT  : ('title', 'placeholder',),
     }
 
     LANGUAGES: ClassVar[Mapping[str, str]] = {
@@ -240,31 +296,44 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
 
     TRANSLATIONS: ClassVar[Mapping[str, GNUTranslations]] = {language: translation('Steganography', './gettext/', (language,)) for language in LANGUAGES}
 
+    @staticmethod
+    def translateString(s: str | None) -> str | None:
+        if not s or s.isspace():
+            return None
+        if not (m := match(r'^([\W\d_]*)(.*?)([\W\d_]*)$', s)):
+            return None
+        (prefix, translatable, suffix) = m.groups()
+        if not translatable or (translated := _(translatable)) == translatable:
+            return None
+        return f"{prefix}{translated}{suffix}"
+
     @classmethod
-    def setLanguage(cls, language: str) -> None:
-        (tr := cls.TRANSLATIONS[language]).install()
-        if _('GETTEXT_TEST') != 'GETTEXT_TEST_' + language:
-            log(f"ERROR: gettext.{type(tr).__name__}({language}) is not configured properly, expected GETTEXT_TEST_{language}, got {_('GETTEXT_TEST')}")
+    def setLanguage(cls) -> None:
+        language = getElementByID('option-language').value
+        # noinspection PyGlobalUndefined
+        global _  # noqa: PLW0603  # pylint: disable=global-statement
+        _ = (tr := cls.TRANSLATIONS[language]).gettext  # type: ignore[assignment]
+        if (test := _(GETTEXT_TEST)) != (expected := f'{GETTEXT_TEST}_{language}'):
+            log(f"ERROR: gettext.{type(tr).__name__}({language}) is not configured properly, expected {expected}, got {test}")
             return
         log("Language set to", cls.LANGUAGES[language])
-        for textNode in iterTextNodes():  # ToDo: exclude log from parsing, probably by whitelisting valid roots and chaining results
-            if (value := textNode.nodeValue).isspace():
-                continue
-            assert value
-            if m := match(r'^([\W\d_]*)(.*?)([\W\d_]*)$', value):
-                (prefix, translatable, suffix) = m.groups()
-                if not translatable:
-                    continue
-                if (translated := _(translatable)) == translatable:
-                    continue
-                textNode.nodeValue = f'{prefix}{translated}{suffix}'
+
+        for textNode in chain[Text].from_iterable(iterTextNodes(root)
+                for root in page['title, #title, #subtitle, #options, button, .image-title, #footer']):
+            if translated := cls.translateString(textNode.nodeValue):
+                textNode.nodeValue = translated
+
+        for element in page[', '.join(cls.TRANSLATABLE_TAG_ATTRS)]:
+            for attr in cls.TRANSLATABLE_TAG_ATTRS[element.tagName]:
+                if translated := cls.translateString(getAttr(element, attr)):
+                    setAttr(element, attr, translated)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # Constructor is only called internally, so we don't know the args and don't care
         super().__init__(*args, **kwargs)
 
         # These fields define names, types and DEFAULT values for options, actual values are stored in Storage
         self.language = next(iter(self.LANGUAGES))
-        self.taskName = ''
+        self.taskName = ""
         self.maxPreviewWidth = 500
         self.maxPreviewHeight = 200
         self.resizeFactor = 1.0
@@ -283,67 +352,62 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
         self.dither = False
         self.smooth = False
 
-        tags: list[Element] = []
+        elements: list[Element] = []
         for (name, defaultValue) in vars(self).items():
             if isinstance(defaultValue, TagAttrValue):
-                tags.append(self.configureTag(name, defaultValue))
+                elements.append(self.configureElement(name, defaultValue))
 
         self.styleSheet = newCSSStyleSheet()
         adoptedStyleSheets.push(self.styleSheet)
         self.updateStyle()
 
-        @when(CLICK, '#options-reset')  # type: ignore[untyped-decorator]
+        self.setLanguage()
+
+        @when(CLICK, getElementByID('options-reset'))
         @typechecked
         def resetEventHandler(_e: Event) -> None:
-            for tag in tags:
-                if tag.type == 'checkbox':
-                    tag.checked = tag.default
-                else:
-                    tag.value = tag.default
-                dispatchEvent(tag, CHANGE)
+            for element in elements:
+                resetInput(element)
 
-    def configureTag(self, name: str, defaultValue: TagAttrValue) -> Element:
+    def configureElement(self, name: str, defaultValue: TagAttrValue) -> Element:
         valueType = type(defaultValue)
         value = self.get(name, defaultValue)  # Read from database
         assert isinstance(value, valueType), f"Incorrect type for option {name}: {type(value).__name__}, expected {valueType.__name__}"
-        tagID = '-'.join(chain(('option',), (word.lower() for word in findall(r'[a-z]+|[A-Z][a-z]*|[A-Z]+', name))))
-        tag = getTagByID(tagID)
-        assert tag.tagName.lower() in ('input', 'select'), tag.tagName  # pylint: disable=use-set-for-membership
-        tag.default = defaultValue
-        if name == 'taskName':
-            exclude = r'''\/:\\?*'<">&\|'''  # ToDo: Generate title and placeholder too
-            setAttr(tag, 'pattern', rf'[^{exclude}\s][^{exclude}]+[^{exclude}\s]')  # Also avoid whitespace at start and end
-        elif name == 'language':
-            tag.innerHTML = ''.join(f'<option value="{lang}">{name}</option>' for (lang, name) in self.LANGUAGES.items())
-            self.setLanguage(value)
-        if tag.tagName.lower() == 'input':
-            args = self.TAG_ARGS[valueType]
-            for (attr, attrValue) in args.items():
-                setAttr(tag, attr, attrValue, onlyIfAbsent = True)  # Set <input> tag attributes according to value type
-            inputType = args.get('type', 'text')
-            setAttr(tag, 'type', inputType, onlyIfAbsent = True)  # Make sure <input type="text"> is always specified explicitly
-            if inputType == 'text':
-                setAttr(tag, 'maxlength', 4, onlyIfAbsent = True)
+        elementID = '-'.join(chain(('option',), (word.lower() for word in findall(r'[a-z]+|[A-Z][a-z]*|[A-Z]+', name))))
+        element = getElementByID(elementID)
+        if name == 'language':  # <SELECT>
+            assert element.tagName == SELECT, element.tagName
+            assert valueType is str, valueType
+            element.innerHTML = ''.join(f'<option value="{lang}">{name}</option>' for (lang, name) in self.LANGUAGES.items())
+        else:  # <INPUT>
+            assert element.tagName == INPUT, element.tagName
+            setAttr(element, 'type', CHECKBOX if valueType is bool else TEXT)
+            for (attr, attrValue) in self.TAG_ATTRIBUTES.get(valueType, {}).items():
+                setAttr(element, attr, attrValue)  # Set <INPUT> element attributes according to valueType
+            if name == 'taskName':  # <INPUT type="text">
+                exclude = r'''\/:\\?*'<">&\|'''
+                setAttr(element, 'pattern', rf'[^{exclude}\s][^{exclude}]+[^{exclude}\s]')  # Also avoid whitespace at start and end
+                title = fr"Do not use {exclude}"  # HTML: "Do not use /:\?*'&lt;&quot;&gt;&amp;|"
+                setAttr(element, 'title', title)
+                setAttr(element, 'placeholder', title)
+                setAttr(element, 'maxlength', 40)
+                setAttr(element, 'autocomplete', 'on')
+        setAttr(element, 'checked' if valueType is bool else 'value', defaultValue)
+        if valueType is bool:
+            element.checked = value
         else:
-            inputType = None  # For select tags
-        if inputType == 'checkbox':
-            tag.checked = value
-        else:
-            tag.value = value
+            element.value = value
 
-        @when(CHANGE, tag)  # type: ignore[untyped-decorator]
+        @when(CHANGE, element)
         @typechecked
         async def changeEventHandler(_e: Event) -> None:
-            newValue: TagAttrValue = tag.value
-            assert isinstance(newValue, str), type(newValue)
-            if valueType is str:
+            newValue: TagAttrValue = element.checked if valueType is bool else element.value.strip()
+            if valueType is str:  # taskName or language
                 if name == 'taskName' and not newValue:
-                    newValue = getRandomName()  # Provide random task name to save user from extra thinking
-                elif name == 'language':
-                    reload()
+                    newValue = getDefaultTaskName()  # Provide random task name to save user from extra thinking
             elif valueType is bool:
-                newValue = tag.checked
-            elif newValue:  # int or float from non-empty string
+                pass
+            elif newValue:  # int or float as non-empty string
                 try:
                     newValue = valueType(newValue)
                 except ValueError:
@@ -351,12 +415,15 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
             else:  # empty string
                 newValue = defaultValue
             self[name] = newValue  # Save to database
-            tag.value = newValue  # Write processed value back to the input tag
+            if valueType is not bool:
+                element.value = newValue  # Write processed value back to the input field
             if name in ('maxPreviewWidth', 'maxPreviewHeight'):  # pylint: disable=use-set-for-membership
                 self.updateStyle()
             await self.sync()  # Make sure database is really updated
+            if name == 'language':
+                reload()
 
-        return tag
+        return element
 
     def updateStyle(self) -> None:
         self.styleSheet.replaceSync(f'''
@@ -366,30 +433,32 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
 }}
         ''')
 
-    def saveFile(self, name: str, data: bytes | None, fileName: str | None = None) -> None:
+    async def saveFile(self, name: str, data: bytes | None, fileName: str | None = None) -> None:
         if data:
-            assert fileName
-            self[f'file-{name}'] = bytearray(data)
+            assert fileName, repr(fileName)
+            self[f'file-{name}'] = bytearray(data)  # Write to database
             self[f'file-{name}-fileName'] = fileName
+            await self.sync()
         else:
-            self.delFile(name)
+            await self.delFile(name)
 
     def loadFile(self, name: str) -> tuple[bytes | None, str | None]:
-        data: bytearray = self.get(f'file-{name}')
+        data: bytearray | None = self.get(f'file-{name}')  # Read from database
         # noinspection PyRedundantParentheses
         return (bytes(data) if data else None, self.get(f'file-{name}-fileName'))
 
-    def delFile(self, name: str) -> None:
+    async def delFile(self, name: str) -> None:
         with suppress(KeyError):
-            del self[f'file-{name}']
+            del self[f'file-{name}']  # Delete from database
         with suppress(KeyError):
             del self[f'file-{name}-fileName']
+        await self.sync()
 
     def __getattribute__(self, name: str) -> Any:
         defaultValue = super().__getattribute__(name)
         if not isinstance(defaultValue, TagAttrValue):
             return defaultValue  # Not an option field
-        ret = self.get(name, None)
+        ret = self.get(name, None)  # Read from database
         return defaultValue if ret is None else ret
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -401,7 +470,6 @@ class Options(Storage):  # type: ignore[misc, no-any-unimported]
                 else:
                     assert isinstance(value, type(defaultValue)), f"Incorrect type for option {name}: {type(value).__name__}, expected {type(defaultValue).__name__}"
                 self[name] = value
-                self.sync()
                 return
         except AttributeError:
             pass
@@ -422,6 +490,7 @@ class Stage(Enum):
 @typechecked
 class ImageBlock:
     ID_PREFIX: ClassVar[str] = 'image-'
+    TEMPLATE_PREFIX: ClassVar[str] = 'template-'
 
     DEPENDENCIES: ClassVar[Mapping[Stage, tuple[Stage, ...]]] = {
         Stage.SOURCE: (Stage.PROCESSED_SOURCE,),
@@ -441,8 +510,8 @@ class ImageBlock:
 
     @classmethod
     async def init(cls) -> None:
-        assert cls.options is None  # This method should only be called once
-        cls.options = await storage('steganography', storage_class = Options)
+        assert cls.options is None, type(cls.options)  # This method should only be called once
+        cls.options = cast(Options, await storage('steganography', storage_class = Options))
         await repaint()
         for stage in Stage:
             cls.ImageBlocks[stage] = ImageBlock(stage)
@@ -452,7 +521,7 @@ class ImageBlock:
 
     @classmethod
     async def process(cls, targetStages: Stage | Iterable[Stage], processFunction: Callable[..., Image | tuple[Image, ...]], sourceStages: Stage | Iterable[Stage]) -> None:
-        assert cls.options is not None
+        assert cls.options is not None, type(cls.options)
         sources = tuple(cls.ImageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.ImageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         for t in targets:
@@ -489,15 +558,18 @@ class ImageBlock:
         self.fileName: str | None = None
         self.dependencies: tuple[ImageBlock, ...] = ()
 
-        # Create DOM tag
-        block = getTagByID('template').clone(self.getTagID('block'))
-        getTagByID('uploaded' if self.isUpload else 'generated').append(block)  # ToDo: Add third section: uploaded, processed, generated?
+        # Create DOM element
+        block = getElementByID('template').clone(self.getElementID('block'))
+        targetID = 'uploaded' if self.isUpload else 'processed' if self.isProcessed else 'generated'
+        getElementByID(targetID).append(block)
 
         # Assign named IDs to all children that have image-* classes
-        for tag in block.find('*'):
-            for clas in tag.classes:
+        for element in block.find('*'):
+            if element.tagName == 'LABEL' and (for_ := getAttr(element, 'for')) and for_.startswith(self.TEMPLATE_PREFIX):
+                setAttr(element, 'for', f'{for_[len(self.TEMPLATE_PREFIX):]}-{self.name}')
+            for clas in element.classes:
                 if clas.startswith(self.ID_PREFIX):
-                    tag.id = f'{clas}-{self.name}'
+                    setAttr(element, 'id', f'{clas}-{self.name}')
                     break
 
         # Adjust children attributes
@@ -523,40 +595,40 @@ class ImageBlock:
             self.setFileName()
 
         if self.isUpload:
-            uploadTag = self.getTag('upload')
+            uploadTag = self.getElement('upload')
 
-            @when(CHANGE, uploadTag)  # type: ignore[untyped-decorator]
+            @when(CHANGE, uploadTag)
             @typechecked
             async def uploadEventHandler(_e: Event) -> None:
                 # noinspection PyShadowingNames
                 if fileName := uploadTag.value:
-                    await self.upload(getFileNameFromPath(fileName), uploadTag.files.item(0))
+                    await self.upload(getFileNameFromPath(fileName), uploadTag.files.item(0))  # type: ignore[attr-defined]
                 else:
                     await self.upload()  # E.g. Esc was pressed at upload dialog
 
-            @when(CLICK, self.getTag('remove'))  # type: ignore[untyped-decorator]
+            @when(CLICK, self.getElement('remove'))
             @typechecked
             async def removeEventHandler(_e: Event) -> None:
                 uploadTag.value = ''
-                self.remove()
+                await self.remove()
 
-    def getTagID(self, detail: str) -> str:
+    def getElementID(self, detail: str) -> str:
         return f'{self.ID_PREFIX}{detail}-{self.name}'
 
-    def getTag(self, detail: str) -> Element:
-        return getTagByID(self.getTagID(detail))
+    def getElement(self, detail: str) -> Element:
+        return getElementByID(self.getElementID(detail))
 
     def hide(self, name: str) -> None:
-        hide(self.getTag(name))
+        hide(self.getElement(name))
 
     def show(self, name: str) -> None:
-        show(self.getTag(name))
+        show(self.getElement(name))
 
-    def getAttr(self, name: str, attr: str) -> str:
-        return getAttr(self.getTag(name), attr)
+    def getAttr(self, name: str, attr: str, default: str | None = None) -> str | None:
+        return getAttr(self.getElement(name), attr, default)
 
     def setAttr(self, name: str, attr: str, value: str) -> None:
-        setAttr(self.getTag(name), attr, value)
+        setAttr(self.getElement(name), attr, value)
 
     def setFileName(self, fileName: str | None = None) -> None:
         assert self.options is not None
@@ -576,7 +648,6 @@ class ImageBlock:
         self.show('description')
 
     def error(self, message: str, exception: BaseException | None = None) -> None:
-        self.delFile()
         self.setDescription(f"{_("ERROR")} {message}{f": {exception}" if exception else ''}")
         self.hide('remove')
 
@@ -606,24 +677,23 @@ class ImageBlock:
         if self.isUpload:
             self.show('remove')
 
-    def saveFile(self, byteArray: bytes) -> None:
+    async def saveFile(self, byteArray: bytes) -> None:
         assert self.options is not None
-        assert self.fileName
-        self.options.saveFile(self.name, byteArray, self.fileName)
+        assert self.fileName, repr(self.fileName)
+        await self.options.saveFile(self.name, byteArray, self.fileName)
 
     def loadFile(self) -> tuple[bytes | None, str | None]:
         assert self.options is not None
         return self.options.loadFile(self.name)
 
-    def delFile(self) -> None:
+    async def delFile(self) -> None:
         assert self.options is not None
-        self.options.delFile(self.name)
+        await self.options.delFile(self.name)
 
-    def remove(self) -> None:
-        self.delFile()
+    async def remove(self) -> None:
+        await self.delFile()
         self.resetBlock()
-        for block in self.dependencies:
-            block.remove()
+        await gather(*(block.remove() for block in self.dependencies))
 
     async def upload(self, fileName: str | None = None, data: Blob | None = None) -> None:
         assert self.isUpload
@@ -632,14 +702,15 @@ class ImageBlock:
         self.startOperation(_("Loading image"))
         await repaint()
         try:
-            assert data, data
+            assert data, repr(data)
+            # noinspection PyTypeChecker
             imageBytes = await blobToBytes(data)
             image = loadImage(imageBytes)
         except Exception as ex:  # noqa : BLE001
             self.error(_("loading image"), ex)
             return
         self.setFileName(fileName)
-        self.saveFile(imageBytes)
+        await self.saveFile(imageBytes)
         self.completeOperation(image, imageBytes)
         self.show('remove')
         await self.pipeline()
@@ -650,7 +721,7 @@ def exceptionHandler(source: str, exceptionType: type[BaseException | None] | No
         exceptionType = type(exception)
     if traceback is None and exception:
         traceback = exception.__traceback__
-    # Filter traceback to remove empty lines
+    # Filter traceback to remove empty lines:
     tracebackStr = '\n' + '\n'.join(line for line in '\n'.join(extract_tb(traceback).format()).splitlines() if line.strip()) if traceback else ''
     log(f"\nERROR Uncaught exception in {source}, type {exceptionType.__name__}: {exception}{tracebackStr}\n\nPlease make a screenshot and report it to @jolaf at Telegram or VK or to vmzakhar@gmail.com. Thank you!\n")
 
@@ -680,4 +751,4 @@ async def main() -> None:
 if __name__ == '__main__':
     create_task(main())  # noqa: RUF006
 
-print("[python] Loaded app")
+print(f"{PREFIX} Loaded app")
