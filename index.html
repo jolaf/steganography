@@ -41,125 +41,125 @@
 </head>
 <body>
 <script type="py" src="./main.py" config="./pyscript.toml" target="#log"></script>
-<div id="all">
-  <h1 id="title"><img alt="" src="images/favicon.svg">Steganography<span id="location"></span></h1>
-  <h3 id="subtitle">Applied visual cryptography for Larp</h3>
-  <pre id="log">Loading, please wait...
-<span>(if it takes too long, please refresh page or press F12 to check browser console)</span>
-</pre>
-  <div id="content" class="hidden">
-    <div id="options">
-      <div id="option-language-block">
-        <label for="option-language">Select language:</label>
-        <select id="option-language"></select>
+<div id="flexColumn100">
+  <div id="flex1">
+    <h1 id="title"><img alt="" src="images/favicon.svg">Steganography<span id="location"></span></h1>
+    <h3 id="subtitle">Applied visual cryptography for Larp</h3>
+    <pre id="log">Loading, please wait...<span>(if it takes too long, please refresh page or press F12 to check browser console)</span></pre>
+    <div id="content" class="hidden">
+      <div id="options">
+        <div id="option-language-block">
+          <label for="option-language">Select language:</label>
+          <select id="option-language"></select>
+        </div>
+        <div id="option-task-name-block">
+          <label for="option-task-name">Task name:</label>
+          <input id="option-task-name">
+          <span>(used to generate output file names)</span>
+        </div>
+        <div id="option-preview-size-block">
+          Max preview size:
+          <label for="option-max-preview-width" hidden></label>
+          <input id="option-max-preview-width">
+          x
+          <label for="option-max-preview-height" hidden></label>
+          <input id="option-max-preview-height">
+          px
+          <span>(clear the fields to impose no limit)</span>
+        </div>
+        <div id="option-resize-image-block">
+          Resize image to
+          <label for="option-resize-factor" hidden></label>
+          <input id="option-resize-factor">
+          times or
+          <label for="option-resize-width" hidden></label>
+          <input id="option-resize-width">
+          x
+          <label for="option-resize-height" hidden></label>
+          <input id="option-resize-height">
+          px
+          <span>(only specify one value to constrain proportions)</span>
+        </div>
+        <div id="option-crop-image-block">
+          Crop image to
+          <label for="option-crop-width" hidden></label>
+          <input id="option-crop-width">
+          x
+          <label for="option-crop-height" hidden></label>
+          <input id="option-crop-height">
+          px
+        </div>
+        <div id="option-key-size-block">
+          Key image size:
+          <label for="option-key-factor" hidden></label>
+          <input id="option-key-factor">
+          times or
+          <label for="option-key-width" hidden></label>
+          <input id="option-key-width">
+          x
+          <label for="option-key-height" hidden></label>
+          <input id="option-key-height">
+          px
+          <span>(defaults to input image size)</span>
+        </div>
+        <div id="option-key-rotate-block">
+          <label for="option-key-rotate">Random key rotation</label>
+          <input id="option-key-rotate">
+        </div>
+        <div id="option-lock-size-block">
+          Lock image size:
+          <label for="option-lock-factor" hidden></label>
+          <input id="option-lock-factor">
+          times or
+          <label for="option-lock-width" hidden></label>
+          <input id="option-lock-width">
+          x
+          <label for="option-lock-height" hidden></label>
+          <input id="option-lock-height">
+          px
+          <span>(defaults to key size)</span>
+        </div>
+        <div id="option-key-resize-block">
+          <label for="option-key-resize">Resize key to lock</label>
+          <input id="option-key-resize">
+        </div>
+        <div id="option-dither-block">
+          <label for="option-dither">Employ dithering</label>
+          <input id="option-dither">
+        </div>
+        <div id="option-smooth-block">
+          <label for="option-smooth">Smoother background</label>
+          <input id="option-smooth">
+        </div>
+        <button id="options-reset">Reset options to defaults</button>
       </div>
-      <div id="option-task-name-block">
-        <label for="option-task-name">Task name:</label>
-        <input id="option-task-name">
-        <span>(used to generate output file names)</span>
+      <div id="template" class="image-block hidden">
+        <h2 class="image-title"></h2>
+        <div class="image-upload-block">
+          <button class="image-remove hidden" title="Click to remove this image from processing">Remove</button>
+          <input class="image-upload" title="Click to upload a file to process" type="file" accept="image/*">
+        </div>
+        <label class="image-description hidden" for="template-image-download"></label>
+        <div class="image-display-block hidden">
+          <a class="image-display-link" title="Click for full screen preview" target="_blank" href="">
+            <img class="image-display" alt="preview" src=".">
+          </a>
+          <br>
+          <a class="image-download-link" title="Click to download to your device" download="" href="">
+            <button id="template-image-download" class="image-download">Download</button>
+            <label class="image-name" for="template-image-download"></label>
+          </a>
+        </div>
       </div>
-      <div id="option-preview-size-block">
-        Max preview size:
-        <label for="option-max-preview-width" hidden></label>
-        <input id="option-max-preview-width">
-        x
-        <label for="option-max-preview-height" hidden></label>
-        <input id="option-max-preview-height">
-        px
-        <span>(clear the fields to impose no limit)</span>
-      </div>
-      <div id="option-resize-image-block">
-        Resize image to
-        <label for="option-resize-factor" hidden></label>
-        <input id="option-resize-factor">
-        times or
-        <label for="option-resize-width" hidden></label>
-        <input id="option-resize-width">
-        x
-        <label for="option-resize-height" hidden></label>
-        <input id="option-resize-height">
-        px
-        <span>(only specify one value to constrain proportions)</span>
-      </div>
-      <div id="option-crop-image-block">
-        Crop image to
-        <label for="option-crop-width" hidden></label>
-        <input id="option-crop-width">
-        x
-        <label for="option-crop-height" hidden></label>
-        <input id="option-crop-height">
-        px
-      </div>
-      <div id="option-key-size-block">
-        Key image size:
-        <label for="option-key-factor" hidden></label>
-        <input id="option-key-factor">
-        times or
-        <label for="option-key-width" hidden></label>
-        <input id="option-key-width">
-        x
-        <label for="option-key-height" hidden></label>
-        <input id="option-key-height">
-        px
-        <span>(defaults to input image size)</span>
-      </div>
-      <div id="option-key-rotate-block">
-        <label for="option-key-rotate">Random key rotation</label>
-        <input id="option-key-rotate">
-      </div>
-      <div id="option-lock-size-block">
-        Lock image size:
-        <label for="option-lock-factor" hidden></label>
-        <input id="option-lock-factor">
-        times or
-        <label for="option-lock-width" hidden></label>
-        <input id="option-lock-width">
-        x
-        <label for="option-lock-height" hidden></label>
-        <input id="option-lock-height">
-        px
-        <span>(defaults to key size)</span>
-      </div>
-      <div id="option-key-resize-block">
-        <label for="option-key-resize">Resize key to lock</label>
-        <input id="option-key-resize">
-      </div>
-      <div id="option-dither-block">
-        <label for="option-dither">Employ dithering</label>
-        <input id="option-dither">
-      </div>
-      <div id="option-smooth-block">
-        <label for="option-smooth">Smoother background</label>
-        <input id="option-smooth">
-      </div>
-      <button id="options-reset">Reset options to defaults</button>
+      <div id="uploaded" class="image-group"></div>
+      <div id="processed" class="image-group"></div>
+      <div id="generated" class="image-group"></div>
     </div>
-    <div id="template" class="image-block hidden">
-      <h2 class="image-title"></h2>
-      <div class="image-upload-block">
-        <button class="image-remove hidden" title="Click to remove this image from processing">Remove</button>
-        <input class="image-upload" title="Click to upload a file to process" type="file" accept="image/*">
-      </div>
-      <label class="image-description hidden" for="template-image-download"></label>
-      <div class="image-display-block hidden">
-        <a class="image-display-link" title="Click for full screen preview" target="_blank" href="">
-          <img class="image-display" alt="preview" src=".">
-        </a>
-        <br>
-        <a class="image-download-link" title="Click to download to your device" download="" href="">
-          <button id="template-image-download" class="image-download">Download</button>
-          <label class="image-name" for="template-image-download"></label>
-        </a>
-      </div>
-    </div>
-    <div id="uploaded" class="image-group"></div>
-    <div id="processed" class="image-group"></div>
-    <div id="generated" class="image-group"></div>
   </div>
   <div id="footer">
     <table><tr>
-      <td><p>© <a href="https://vk.com/jolaf">Vasily Zakharov</a> 2026</p></td>
-      <td><p id="build">dev</p></td>
+      <td>© <a href="https://vk.com/jolaf">Vasily Zakharov</a> 2026</td>
+      <td id="build">dev</td>
     </tr></table>
   </div>
 </div>

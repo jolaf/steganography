@@ -42,7 +42,7 @@ except ImportError:
         return "steganography"
 
 # noinspection PyUnresolvedReferences
-from pyscript import config as pyscriptConfig, document, when, storage, Storage
+from pyscript import config as pyscriptConfig, document, fetch, when, storage, Storage
 from pyscript.web import page, Element  # pylint: disable=import-error, no-name-in-module
 from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
 
@@ -192,7 +192,7 @@ def resetInput(element: str | Element) -> None:
         element.checked = (getAttr(element, 'checked') == 'true')  # pylint: disable=superfluous-parens
     else:
         element.value = getAttr(element, 'value')
-    dispatchEvent(element, CHANGE)
+    #dispatchEvent(element, CHANGE)  # ToDo: ImageBlock.reset() should do the same?
 
 @typechecked
 def dispatchEvent(element: str | Element, eventType: str) -> None:
@@ -280,8 +280,8 @@ class Options(Storage):
         # These fields define names, types and DEFAULT values for options, actual values are stored in Storage
         self.language = next(iter(self.LANGUAGES))
         self.taskName = ""
-        self.maxPreviewWidth = 500
-        self.maxPreviewHeight = 200
+        self.maxPreviewWidth = 0
+        self.maxPreviewHeight = 100
         self.resizeFactor = 1.0
         self.resizeWidth = 0
         self.resizeHeight = 0
@@ -374,8 +374,8 @@ class Options(Storage):
     def updateStyle(self) -> None:
         self.styleSheet.replaceSync(f'''
 .image-display {{
-    max-width: {self.maxPreviewWidth}px;
-    max-height: {self.maxPreviewHeight}px;
+    max-width: {f'{self.maxPreviewWidth}px' if self.maxPreviewWidth else 'auto'};
+    max-height: {f'{self.maxPreviewHeight}px' if self.maxPreviewHeight else 'auto'};
 }}
         ''')
 
@@ -464,6 +464,8 @@ class ImageBlock:
             await repaint()
         for (stage, block) in cls.ImageBlocks.items():
             block.dependencies = tuple(cls.ImageBlocks[s] for s in cls.DEPENDENCIES[stage])
+        await repaint()
+        await cls.pipeline()
 
     @classmethod
     async def process(cls, targetStages: Stage | Iterable[Stage], processFunction: Callable[..., Image | tuple[Image, ...]], sourceStages: Stage | Iterable[Stage]) -> None:
@@ -479,7 +481,7 @@ class ImageBlock:
                 ret = (ret,)
             assert len(ret) == len(targets), f"{processFunction.__name__} returned {len(ret)} images, expected {len(targets)}"
             for (target, image) in zip(targets, ret, strict = True):
-                target.completeOperation(image, imageToBytes(image))
+                target.completeOperation(image, imageToBytes(image))  # ToDo: Hide processed block if image is identical to source
         except Exception as ex:  # noqa : BLE001
             for target in targets:
                 target.error(_("processing image"), ex)
@@ -497,7 +499,7 @@ class ImageBlock:
 
     def __init__(self, stage: Stage) -> None:
         self.name = stage.name.lower()
-        self.isUpload = (stage.value <= Stage.LOCK.value)  # pylint: disable=superfluous-parens
+        self.isUpload = (stage.value <= Stage.KEY.value)  # pylint: disable=superfluous-parens
         self.isProcessed = not self.isUpload and stage.value <= Stage.PROCESSED_KEY.value
         self.isGenerated = not self.isUpload and not self.isProcessed
         self.image: Image | None = None
@@ -559,6 +561,7 @@ class ImageBlock:
             async def removeEventHandler(_e: Event) -> None:
                 uploadTag.value = ''
                 await self.remove()
+                # ToDo: ?? await self.pipeline()
 
     def getElementID(self, detail: str) -> str:
         return f'{self.ID_PREFIX}{detail}-{self.name}'
@@ -575,13 +578,13 @@ class ImageBlock:
     def getAttr(self, name: str, attr: str, default: str | None = None) -> str | None:
         return getAttr(self.getElement(name), attr, default)
 
-    def setAttr(self, name: str, attr: str, value: str) -> None:
-        setAttr(self.getElement(name), attr, value)
+    def setAttr(self, name: str, attr: str, value: str, onlyIfAbsent: bool = False) -> None:
+        setAttr(self.getElement(name), attr, value, onlyIfAbsent)
 
     def setFileName(self, fileName: str | None = None) -> None:
         assert self.options is not None
         if not fileName:
-            fileName = f'{self.options.taskName}-{self.name}.png'
+            fileName = f'{self.options.taskName}-{self.name.replace('_', '-')}.png'
         self.fileName = fileName
         self.setAttr('name', TEXT, fileName)
         self.setAttr('download-link', 'download', fileName)
