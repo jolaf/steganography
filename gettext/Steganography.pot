@@ -223,5 +223,5 @@ msgid "Generated key image"
 msgstr ""
 
 #: main.py:526
-msgid "Key-over-lock test image"
+msgid "Key over lock test image"
 msgstr ""

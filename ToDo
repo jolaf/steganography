@@ -1,4 +1,3 @@
-Translate h2
 Provide proper instructions if loading fails: github pages, python web server, npm web server, turn off CORS
 Regenerate at options change
 Lock image (upload, remove)
