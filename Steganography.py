@@ -56,7 +56,6 @@ def error(*args: Any) -> None:
 
 @typechecked
 def loadImage(inp: ImagePath | bytes, fileName: str | None = None) -> Image:
-    #log(f"Image: {image.format} {image.mode} {image.width}x{image.height}")
     image = imageOpen(BytesIO(inp) if isinstance(inp, bytes) else inp)
     if not image.format:
         image.format = getImageFormatFromExtension(fileName or inp)
@@ -85,7 +84,7 @@ def getMimeTypeFromImage(image: Image) -> str:
             if mimeType:
                 return mimeType
         except Exception:  # noqa: BLE001, S110
-            pass  # log("Exception:", e)
+            pass
     return 'image/png'
 
 @typechecked
@@ -95,7 +94,7 @@ def getImageFormatFromExtension(path: ImagePath) -> str:
         if mimeType and mimeType.startswith('image/'):
             return mimeType.split('/')[1].upper()
     except Exception:  # noqa: BLE001, S110
-        pass  # log("Exception:", e)
+        pass
     return 'PNG'
 
 @typechecked
@@ -104,7 +103,7 @@ def processImage(image: Image, **options: Any) -> Image:
     # - resize: int | float | tuple[int | None, int | None]
     # - rotate: bool
     # - dither: bool
-    processed = grayscale = image.convert("L")  # 8-bit grayscale
+    processed = grayscale = image.convert('L')  # 8-bit grayscale
     if (resize := options.get('resize')) not in (None, 0, 1, (), (None, None)):  # int size tuple or float factor
         assert resize
         if isinstance(resize, Sequence):
@@ -123,7 +122,7 @@ def processImage(image: Image, **options: Any) -> Image:
             resize = tuple(round(d * resize) for d in image.size)
         assert isinstance(resize, tuple) and len(resize) == 2 and all(isinstance(r, int) for r in resize), repr(resize) # noqa: PT018
         processed = processed.resize(resize, Resampling.BICUBIC)
-    if options.get('rotate'):  # bool. # ToDo: Should we save rotate angle somewhere?
+    if options.get('rotate'):  # bool  # ToDo: Should we save rotate angle somewhere?
         processed = processed.rotate(randint(1, 359), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background  # noqa: S311
     if image.mode == '1' and processed is grayscale:  # No changes were made
         return image

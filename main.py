@@ -5,7 +5,7 @@ from __future__ import annotations
 PREFIX = "[python]"
 print(f"{PREFIX} Loading app")
 
-from asyncio import create_task, gather, get_running_loop, sleep, AbstractEventLoop
+from asyncio import create_task, get_running_loop, sleep, AbstractEventLoop
 from collections.abc import Callable, Iterable, Iterator, Mapping  # noqa: TC003
 from contextlib import suppress
 from datetime import datetime
@@ -13,6 +13,7 @@ from enum import Enum
 # noinspection PyUnresolvedReferences
 from gettext import translation, GNUTranslations
 from itertools import chain
+from pathlib import Path
 from re import findall, match
 import sys
 from sys import version as pythonVersion
@@ -42,7 +43,7 @@ except ImportError:
         return "steganography"
 
 # noinspection PyUnresolvedReferences
-from pyscript import config as pyscriptConfig, document, fetch, when, storage, Storage
+from pyscript import document, when, storage, Storage
 from pyscript.web import page, Element  # pylint: disable=import-error, no-name-in-module
 from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
 
@@ -52,8 +53,11 @@ except ImportError:
     try:
         from pyscript import __version__ as pyscriptVersion  # type: ignore[attr-defined]
     except ImportError:
-        urls = tuple(url for url in (element.src for element in page['script']) if url.endswith('core.js'))
-        pyscriptVersion = urls[0].split('/')[-2] if urls else "UNKNOWN"
+        try:
+            coreURL = next(element.src for element in page['script'] if element.src.endswith('core.js'))
+            pyscriptVersion = next(word for word in coreURL.split('/') if findall(r'\d', word))
+        except Exception:  # noqa: BLE001
+            pyscriptVersion = "UNKNOWN"
 
 from js import location, Blob, CSSStyleSheet, Event, Node, NodeFilter, Text, Uint8Array, URL
 from pyodide.ffi import JsNull, JsProxy  # pylint: disable=import-error, no-name-in-module
@@ -192,7 +196,7 @@ def resetInput(element: str | Element) -> None:
         element.checked = (getAttr(element, 'checked') == 'true')  # pylint: disable=superfluous-parens
     else:
         element.value = getAttr(element, 'value')
-    #dispatchEvent(element, CHANGE)  # ToDo: ImageBlock.reset() should do the same?
+    #dispatchEvent(element, CHANGE)  # We don't do it to avoid running pipeline multiple times when resetting all options
 
 @typechecked
 def dispatchEvent(element: str | Element, eventType: str) -> None:
@@ -205,25 +209,31 @@ def iterTextNodes(root: Element | JsProxy | None = None) -> Iterator[Node]:
     walker = createTreeWalker(toJsElement(root or page.html), NodeFilter.SHOW_TEXT)
     while node := walker.nextNode():
         assert node.nodeType == TEXT_NODE, node.nodeType
-        # noinspection PyTypeChecker
         yield node
 
 @typechecked
 class Options(Storage):
+    UNSET: ClassVar[str] = '-'
+
+    TYPE_DEFAULTS: ClassVar[Mapping[type[TagAttrValue], TagAttrValue]] = {
+        int: 0,
+        float: 1.0,
+    }
+
     TAG_ATTRIBUTES: ClassVar[Mapping[type[TagAttrValue], Mapping[str, TagAttrValue]]] = {
         int: {
             'inputmode': 'numeric',
             'maxlength': 4,
             'title': "integer",
             'placeholder': "0000",
-            'pattern': r'[0-9]+',
+            'pattern': r'\s*(-|[0-9]+)?\s*',
         },
         float: {
             'inputmode': 'decimal',
             'maxlength': 4,
             'title': "float",
             'placeholder': "0.00",
-            'pattern': r'\.[0-9]{1,2}|[0-9]+\.[0-9]{1,2}|[0-9]+\.?',
+            'pattern': r'\s*(-|\.[0-9]{1,2}|[0-9]+\.[0-9]{1,2}|[0-9]+\.?)?\s*',
         },
     }
 
@@ -298,25 +308,29 @@ class Options(Storage):
         self.dither = False
         self.smooth = False
 
-        elements: list[Element] = []
+        elements: dict[str, Element] = {}
         for (name, defaultValue) in vars(self).items():
             if isinstance(defaultValue, TagAttrValue):
-                elements.append(self.configureElement(name, defaultValue))
+                elements[name] = self.configureElement(name, defaultValue)
 
         self.styleSheet = newCSSStyleSheet()
         adoptedStyleSheets.push(self.styleSheet)
         self.updateStyle()
-
         self.setLanguage()
 
         @when(CLICK, getElementByID('options-reset'))
         @typechecked
-        def resetEventHandler(_e: Event) -> None:
-            for element in elements:
-                resetInput(element)
+        async def resetEventHandler(_e: Event) -> None:
+            for (name, element) in elements.items():
+                if name == 'taskName':
+                    self[name] = element.value = getDefaultTaskName()  # Save to database
+                else:
+                    resetInput(element)  # Doesn't reset language because that is <SELECT>, not <INPUT>
+            await ImageBlock.resetUploads()
 
     def configureElement(self, name: str, defaultValue: TagAttrValue) -> Element:
         valueType = type(defaultValue)
+        typeDefaultValue = self.TYPE_DEFAULTS.get(valueType)
         value = self.get(name, defaultValue)  # Read from database
         assert isinstance(value, valueType), f"Incorrect type for option {name}: {type(value).__name__}, expected {valueType.__name__}"
         elementID = '-'.join(chain(('option',), (word.lower() for word in findall(r'[a-z]+|[A-Z][a-z]*|[A-Z]+', name))))
@@ -332,16 +346,23 @@ class Options(Storage):
                 setAttr(element, attr, attrValue)  # Set <INPUT> element attributes according to valueType
             if name == 'taskName':  # <INPUT type="text">
                 exclude = r'''\/:\\?*'<">&\|'''
-                setAttr(element, 'pattern', rf'[^{exclude}\s][^{exclude}]+[^{exclude}\s]')  # Also avoid whitespace at start and end
+                setAttr(element, 'pattern', rf'[^{exclude}]+')
+                for (f, t) in {r'\/': '/', r'\|': '|', r'\\': '\\'}.items():
+                    exclude = exclude.replace(f, t)
                 title = fr"Do not use {exclude}"  # HTML: "Do not use /:\?*'&lt;&quot;&gt;&amp;|"
                 setAttr(element, 'title', title)
                 setAttr(element, 'placeholder', title)
                 setAttr(element, 'maxlength', 40)
                 setAttr(element, 'autocomplete', 'on')
+                if not value:
+                    value = getDefaultTaskName()
+                    self[name] = value
         setAttr(element, 'checked' if valueType is bool else 'value', defaultValue)
         if valueType is bool:
             element.checked = value
-        else:
+        elif valueType in (int, float):
+            element.value = self.UNSET if value == typeDefaultValue else value
+        else:  # str
             element.value = value
 
         @when(CHANGE, element)
@@ -349,19 +370,26 @@ class Options(Storage):
         async def changeEventHandler(_e: Event) -> None:
             newValue: TagAttrValue = element.checked if valueType is bool else element.value.strip()
             if valueType is str:  # taskName or language
-                if name == 'taskName' and not newValue:
-                    newValue = getDefaultTaskName()  # Provide random task name to save user from extra thinking
-            elif valueType is bool:
+                if name == 'taskName':
+                    if not newValue:
+                        newValue = getDefaultTaskName()  # Provide random task name to save user from extra thinking
+                    elif not element.checkValidity():
+                        newValue = self.get(name, getDefaultTaskName())
+            elif valueType is bool:  # checkbox
                 pass
-            elif newValue:  # int or float as non-empty string
+            elif newValue and newValue != self.UNSET:  # int or float as non-empty string
                 try:
-                    newValue = valueType(newValue)
+                    if (newValue := valueType(newValue)) <= 0:  # type: ignore[operator]
+                        raise ValueError(f"Must be positive, got {newValue}")  # noqa: TRY301
                 except ValueError:
-                    newValue = defaultValue
-            else:  # empty string
-                newValue = defaultValue
+                    newValue = self.get(name, defaultValue)  # Read from database
+            else:  # int or float from empty string or UNSET
+                assert typeDefaultValue is not None
+                newValue = typeDefaultValue if newValue == self.UNSET else defaultValue
             self[name] = newValue  # Save to database
-            if valueType is not bool:
+            if valueType in (int, float):
+                element.value = self.UNSET if newValue == typeDefaultValue else newValue
+            elif valueType is str:
                 element.value = newValue  # Write processed value back to the input field
             if name in ('maxPreviewWidth', 'maxPreviewHeight'):  # pylint: disable=use-set-for-membership
                 self.updateStyle()
@@ -374,8 +402,8 @@ class Options(Storage):
     def updateStyle(self) -> None:
         self.styleSheet.replaceSync(f'''
 .image-display {{
-    max-width: {f'{self.maxPreviewWidth}px' if self.maxPreviewWidth else 'auto'};
-    max-height: {f'{self.maxPreviewHeight}px' if self.maxPreviewHeight else 'auto'};
+    max-width: {f'{self.maxPreviewWidth}px' if self.maxPreviewWidth else 'none'};
+    max-height: {f'{self.maxPreviewHeight}px' if self.maxPreviewHeight else 'none'};
 }}
         ''')
 
@@ -390,7 +418,6 @@ class Options(Storage):
 
     def loadFile(self, name: str) -> tuple[bytes | None, str | None]:
         data: bytearray | None = self.get(f'file-{name}')  # Read from database
-        # noinspection PyRedundantParentheses
         return (bytes(data) if data else None, self.get(f'file-{name}-fileName'))
 
     async def delFile(self, name: str) -> None:
@@ -437,17 +464,17 @@ class Stage(Enum):
 class ImageBlock:
     ID_PREFIX: ClassVar[str] = 'image-'
     TEMPLATE_PREFIX: ClassVar[str] = 'template-'
+    REMOVED: ClassVar[bytes] = b'__REMOVED__'
 
-    DEPENDENCIES: ClassVar[Mapping[Stage, tuple[Stage, ...]]] = {
-        Stage.SOURCE: (Stage.PROCESSED_SOURCE,),
-        Stage.LOCK: (Stage.PROCESSED_LOCK,),
-        Stage.KEY: (Stage.PROCESSED_KEY,),
-        Stage.PROCESSED_SOURCE: (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
-        Stage.PROCESSED_LOCK: (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
-        Stage.PROCESSED_KEY: (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
-        Stage.GENERATED_LOCK: (Stage.KEY_OVER_LOCK_TEST,),
-        Stage.GENERATED_KEY: (Stage.KEY_OVER_LOCK_TEST,),
-        Stage.KEY_OVER_LOCK_TEST: (),
+    SOURCES: ClassVar[Mapping[Stage, Stage]] = {
+        Stage.PROCESSED_SOURCE: Stage.SOURCE,
+        Stage.PROCESSED_LOCK: Stage.LOCK,
+        Stage.PROCESSED_KEY: Stage.KEY,
+    }
+
+    PRELOADED_FILES: ClassVar[Mapping[Stage, str]] = {
+        Stage.LOCK: './lock.png',
+        Stage.KEY: './key.png',
     }
 
     ImageBlocks: ClassVar[dict[Stage, ImageBlock]] = {}
@@ -458,19 +485,24 @@ class ImageBlock:
     async def init(cls) -> None:
         assert cls.options is None, type(cls.options)  # This method should only be called once
         cls.options = cast(Options, await storage('steganography', storage_class = Options))
-        await repaint()
         for stage in Stage:
             cls.ImageBlocks[stage] = ImageBlock(stage)
-            await repaint()
         for (stage, block) in cls.ImageBlocks.items():
-            block.dependencies = tuple(cls.ImageBlocks[s] for s in cls.DEPENDENCIES[stage])
-        await repaint()
+            block.source = cls.ImageBlocks.get(cls.SOURCES.get(stage))  # type: ignore[arg-type]
+        await cls.pipeline()
+
+    @classmethod
+    async def resetUploads(cls) -> None:
+        for stage in cls.PRELOADED_FILES:
+            await cls.ImageBlocks[stage].resetUpload()
         await cls.pipeline()
 
     @classmethod
     async def process(cls, targetStages: Stage | Iterable[Stage], processFunction: Callable[..., Image | tuple[Image, ...]], sourceStages: Stage | Iterable[Stage]) -> None:
         assert cls.options is not None, type(cls.options)
         sources = tuple(cls.ImageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
+        if any(not source.image for source in sources):
+            return
         targets = tuple(cls.ImageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         for t in targets:
             t.startOperation(_("Processing image"))
@@ -479,16 +511,19 @@ class ImageBlock:
             ret = processFunction(*(source.image for source in sources), **vars(cls.options))
             if isinstance(ret, Image):
                 ret = (ret,)
-            assert len(ret) == len(targets), f"{processFunction.__name__} returned {len(ret)} images, expected {len(targets)}"
+            assert len(ret) == len(targets), f"{processFunction.__name__}() returned {len(ret)} images, expected {len(targets)}"
             for (target, image) in zip(targets, ret, strict = True):
-                target.completeOperation(image, imageToBytes(image))  # ToDo: Hide processed block if image is identical to source
+                target.completeOperation(image, imageToBytes(image))
         except Exception as ex:  # noqa : BLE001
             for target in targets:
                 target.error(_("processing image"), ex)
             return
+        finally:
+            await repaint()
 
     @classmethod
     async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
+        await repaint()
         await cls.process(Stage.PROCESSED_SOURCE, processImage, Stage.SOURCE)
         await cls.process(Stage.PROCESSED_LOCK, processImage, Stage.LOCK)
         await cls.process(Stage.PROCESSED_KEY, processImage, Stage.KEY)
@@ -498,13 +533,14 @@ class ImageBlock:
         await cls.process(Stage.KEY_OVER_LOCK_TEST, testOverlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY))  # ToDo: Somehow handle random rotation and location
 
     def __init__(self, stage: Stage) -> None:
-        self.name = stage.name.lower()
+        self.stage = stage
+        self.name = stage.name.lower().replace('_', '-')
         self.isUpload = (stage.value <= Stage.KEY.value)  # pylint: disable=superfluous-parens
         self.isProcessed = not self.isUpload and stage.value <= Stage.PROCESSED_KEY.value
         self.isGenerated = not self.isUpload and not self.isProcessed
         self.image: Image | None = None
         self.fileName: str | None = None
-        self.dependencies: tuple[ImageBlock, ...] = ()
+        self.source: ImageBlock | None = None
 
         # Create DOM element
         block = getElementByID('template').clone(self.getElementID('block'))
@@ -521,47 +557,34 @@ class ImageBlock:
                     break
 
         # Adjust children attributes
-        self.setAttr('title', TEXT, _(' '.join(self.name.split('_')).capitalize() + " image"))
+        self.setAttr('title', TEXT, _(' '.join(self.name.split('-')).capitalize() + " image"))
 
-        if self.isUpload:
-            self.hide('description')
-            self.show('block')
-        else:
+        if not self.isUpload:
             self.hide('upload-block')
+            return
 
-        # Loading image stored in cache, if any
-        (imageBytes, fileName) = self.loadFile()
-        if imageBytes:
-            try:
-                log("Loading cached image:", fileName)
-                image = loadImage(imageBytes, fileName)
-            except Exception as ex:  # noqa : BLE001
-                self.error(_("loading image"), ex)
-                return
-            self.setFileName(fileName)
-            self.completeOperation(image, imageToBytes(image))
-        else:
-            self.setFileName()
+        # Further configuration for upload blocks
+        self.hide('description')
+        self.show('block')
+        self.loadImageFromCache()
+        uploadTag = self.getElement('upload')
 
-        if self.isUpload:
-            uploadTag = self.getElement('upload')
+        @when(CHANGE, uploadTag)
+        @typechecked
+        async def uploadEventHandler(_e: Event) -> None:
+            if files := uploadTag.files:
+                file = files.item(0)  # JS API
+                # noinspection PyTypeChecker
+                await self.uploadFile(file.name, file)
+            else:
+                await self.uploadFile()  # E.g. Esc was pressed at upload dialog
 
-            @when(CHANGE, uploadTag)
-            @typechecked
-            async def uploadEventHandler(_e: Event) -> None:
-                if files := uploadTag.files:
-                    file = files.item(0)  # JS API
-                    # noinspection PyTypeChecker
-                    await self.upload(file.name, file)
-                else:
-                    await self.upload()  # E.g. Esc was pressed at upload dialog
-
-            @when(CLICK, self.getElement('remove'))
-            @typechecked
-            async def removeEventHandler(_e: Event) -> None:
-                uploadTag.value = ''
-                await self.remove()
-                # ToDo: ?? await self.pipeline()
+        @when(CLICK, self.getElement('remove'))
+        @typechecked
+        async def removeEventHandler(_e: Event) -> None:
+            uploadTag.value = ''
+            await self.removeImage()
+            await self.pipeline()
 
     def getElementID(self, detail: str) -> str:
         return f'{self.ID_PREFIX}{detail}-{self.name}'
@@ -584,12 +607,14 @@ class ImageBlock:
     def setFileName(self, fileName: str | None = None) -> None:
         assert self.options is not None
         if not fileName:
-            fileName = f'{self.options.taskName}-{self.name.replace('_', '-')}.png'
+            fileName = f'{self.options.taskName}-{self.name}.png'
         self.fileName = fileName
         self.setAttr('name', TEXT, fileName)
         self.setAttr('download-link', 'download', fileName)
 
     def setURL(self, url: str = '') -> None:
+        if src := self.getAttr('display', 'src'):
+            revokeObjectURL(src)
         self.setAttr('display', 'src', url)
         self.setAttr('display-link', 'href', url)
         self.setAttr('download-link', 'href', url)
@@ -602,9 +627,7 @@ class ImageBlock:
         self.setDescription(f"{_("ERROR")} {message}{f": {exception}" if exception else ''}")
         self.hide('remove')
 
-    def resetBlock(self, description: str | None = None) -> None:
-        if src := self.getAttr('display', 'src'):
-            revokeObjectURL(src)
+    def prepareBlock(self, description: str | None = None) -> None:
         self.setURL()
         self.hide('display-block')
         self.hide('remove')
@@ -617,36 +640,72 @@ class ImageBlock:
                 self.hide('block')
 
     def startOperation(self, message: str) -> None:
-        self.resetBlock(message + "…")
+        self.prepareBlock(message + "…")
 
     def completeOperation(self, image: Image, imageBytes: bytes) -> None:
         self.image = image
         self.setDescription(f"{len(imageBytes)} {_("bytes")} {image.format} {getImageMode(image)} {image.width}x{image.height}")
         self.setURL(createObjectURLFromBytes(imageBytes, getMimeTypeFromImage(image)))
         self.show('display-block')
-        self.show('block')
         if self.isUpload:
             self.show('remove')
+        if self.source and self.image == self.source.image:
+            self.image = self.source.image  # Make them identical to avoid storing duplicate data
+            self.setURL()
+            self.hide('block')
+        else:
+            self.show('block')
 
-    async def saveFile(self, byteArray: bytes) -> None:
+    async def resetUpload(self) -> None:
+        assert self.isUpload
+        assert self.stage in self.PRELOADED_FILES
+        assert self.options is not None
+        await self.options.delFile(self.name)
+        self.loadImageFromCache()
+
+    async def saveImageToCache(self, byteArray: bytes) -> None:
+        assert self.isUpload
         assert self.options is not None
         assert self.fileName, repr(self.fileName)
         await self.options.saveFile(self.name, byteArray, self.fileName)
 
-    def loadFile(self) -> tuple[bytes | None, str | None]:
+    def loadImageFromCache(self) -> None:
+        assert self.isUpload
         assert self.options is not None
-        return self.options.loadFile(self.name)
+        (imageBytes, fileName) = self.options.loadFile(self.name)
+        if imageBytes:
+            if imageBytes == self.REMOVED:
+                (imageBytes, fileName) = (None, None)
+        elif filePath := self.PRELOADED_FILES.get(self.stage):
+            path = Path(filePath)
+            fileName = path.name
+            log("Loading preloaded file:", fileName)
+            with path.open('rb') as f:
+                imageBytes = f.read()
+        else:
+            (imageBytes, fileName) = (None, None)
+        if imageBytes:
+            try:
+                log("Loading image:", fileName)
+                image = loadImage(imageBytes, fileName)
+            except Exception as ex:  # noqa : BLE001
+                self.error(_("loading image"), ex)
+                return
+            self.setFileName(fileName)
+            self.completeOperation(image, imageToBytes(image))
+        else:
+            self.setFileName()
 
-    async def delFile(self) -> None:
-        assert self.options is not None
-        await self.options.delFile(self.name)
+    async def removeImage(self) -> None:
+        if self.isUpload:
+            assert self.options is not None
+            if filePath := self.PRELOADED_FILES.get(self.stage):
+                await self.options.saveFile(self.name, self.REMOVED, Path(filePath).name)
+            else:
+                await self.options.delFile(self.name)
+        self.prepareBlock()
 
-    async def remove(self) -> None:
-        await self.delFile()
-        self.resetBlock()
-        await gather(*(block.remove() for block in self.dependencies))
-
-    async def upload(self, fileName: str | None = None, data: Blob | JsProxy | None = None) -> None:
+    async def uploadFile(self, fileName: str | None = None, data: Blob | JsProxy | None = None) -> None:
         assert self.isUpload
         if not fileName:  # E.g. Esc was pressed at upload dialog
             return
@@ -654,14 +713,13 @@ class ImageBlock:
         await repaint()
         try:
             assert data, repr(data)
-            # noinspection PyTypeChecker
             imageBytes = await blobToBytes(data)
             image = loadImage(imageBytes)
         except Exception as ex:  # noqa : BLE001
             self.error(_("loading image"), ex)
             return
         self.setFileName(fileName)
-        await self.saveFile(imageBytes)
+        await self.saveImageToCache(imageBytes)
         self.completeOperation(image, imageBytes)
         self.show('remove')
         await self.pipeline()
@@ -690,7 +748,6 @@ async def main() -> None:
     log("PyScript v" + pyscriptVersion)
     log("Pyodide v" + pyodideVersion)
     log("Python v" + pythonVersion)
-    log("PyScript config:", pyscriptConfig)
     sys.excepthook = mainExceptionHandler
     get_running_loop().set_exception_handler(loopExceptionHandler)
     log("Configuring app")

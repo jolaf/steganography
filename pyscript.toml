@@ -5,5 +5,7 @@ packages = ["pillow", "coolname", "beartype"]
 [files]
 "./main.py" = ""
 "./Steganography.py" = ""
+"./images/lock.png" = ""
+"./images/key.png" = ""
 "./gettext/en.mo" = "./gettext/en_US/LC_MESSAGES/Steganography.mo"
 "./gettext/ru.mo" = "./gettext/ru_RU/LC_MESSAGES/Steganography.mo"

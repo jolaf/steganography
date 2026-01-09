@@ -51,6 +51,7 @@ a {
     display: block;
     font-size: x-small;
     font-style: italic;
+    margin-bottom: 1em;
 }
 
 #location {

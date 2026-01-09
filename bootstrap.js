@@ -4,7 +4,7 @@
 /* jshint browser: true */
 /* jshint esversion: 6 */
 
-window.localLoadingIsWorking = true;  // Used to check if local scripts can be loaded
+window.bootstrapLoadedOK = true;  // Used to check if local scripts can be loaded
 
 const timeFormatter = new Intl.DateTimeFormat('default', {
       hour: '2-digit',
