@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Steganography 1.0\n"
 "POT-Creation-Date: 2026-01-05 14:31+0300\n"
-"PO-Revision-Date: 2026-01-08 14:59+0300\n"
+"PO-Revision-Date: 2026-01-10 17:08+0300\n"
 "Last-Translator: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language-Team: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language: ru\n"
@@ -195,33 +195,33 @@ msgid "Source image"
 msgstr "Исходный рисунок"
 
 #: main.py:526
-msgid "Lock image"
-msgstr "Рисунок замка"
+msgid "Lock mask"
+msgstr "Маска замка"
 
 #: main.py:526
-msgid "Key image"
-msgstr "Рисунок ключа"
+msgid "Key mask"
+msgstr "Маска ключа"
 
 #: main.py:526
-msgid "Processed source image"
+msgid "Processed source"
 msgstr "Обработанный исходник"
 
 #: main.py:526
-msgid "Processed lock image"
-msgstr "Обработанный замок"
+msgid "Processed lock mask"
+msgstr "Обработанная МЗ"
 
 #: main.py:526
-msgid "Processed key image"
-msgstr "Обработанный ключ"
+msgid "Processed key mask"
+msgstr "Обработанная МК"
 
 #: main.py:526
-msgid "Generated lock image"
-msgstr "Готовый рисунок замка"
+msgid "Generated lock"
+msgstr "Готовый замок"
 
 #: main.py:526
-msgid "Generated key image"
-msgstr "Готовый рисунок ключа"
+msgid "Generated key"
+msgstr "Готовый ключ"
 
 #: main.py:526
-msgid "Key over lock test image"
-msgstr "Тест наложения ключа на замок"
+msgid "Overlay test"
+msgstr "Тест наложения"

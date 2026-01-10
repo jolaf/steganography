@@ -2,6 +2,7 @@ theme: jekyll-theme-minimal
 
 title: Steganography
 description: Applied visual cryptography for Larp
+lang: en
 
 logo: images/favicon.svg
 show_downloads: "true"

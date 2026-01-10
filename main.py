@@ -461,6 +461,18 @@ class ImageBlock:
     TEMPLATE_PREFIX: ClassVar[str] = 'template-'
     REMOVED: ClassVar[bytes] = b'__REMOVED__'
 
+    BLOCK_NAMES: ClassVar[Mapping[Stage, str]] = dict(zip(Stage, (
+        _("Source image"),
+        _("Lock mask"),
+        _("Key mask"),
+        _("Processed source"),
+        _("Processed lock mask"),
+        _("Processed key mask"),
+        _("Generated lock"),
+        _("Generated key"),
+        _("Overlay test"),
+    ), strict = True))
+
     SOURCES: ClassVar[Mapping[Stage, Stage]] = {
         Stage.PROCESSED_SOURCE: Stage.SOURCE,
         Stage.PROCESSED_LOCK: Stage.LOCK,
@@ -564,7 +576,7 @@ class ImageBlock:
                     break
 
         # Adjust children attributes
-        self.setAttr('title', TEXT, _(' '.join(self.name.split('-')).capitalize() + " image"))
+        self.setAttr('title', TEXT, _(self.BLOCK_NAMES[self.stage]))
 
         if not self.isUpload:
             self.hide('upload-block')
@@ -766,7 +778,7 @@ async def main() -> None:
             test()
             raise RuntimeError("Beartype v" + beartypeVersion + " is not operating properly")
         except BeartypeException:
-            log("Beartype v" + beartypeVersion + " up and watching")
+            log("Beartype v" + beartypeVersion + " is up and watching, remove it from `pyscript.toml` to make things faster")
     log("Configuring app")
     await ImageBlock.init()
     hide('log')

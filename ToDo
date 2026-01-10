@@ -7,3 +7,5 @@ Add "Download All" button
 Make upload button translatable (hide <input ="type">)
 Test with offline PyScript
 Create build.py
+<link rel="alternate" hreflang="ru" href="/ru/">
+https://github.com/untra/polyglot

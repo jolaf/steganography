@@ -24,16 +24,17 @@ body {
     display: none;
 }
 
-h1, h3 {
+#title,
+#subtitle {
     margin: 0;
 }
 
-h1 img {
+#title img {
     height: 1cap;
     margin-right: 0.2em;
 }
 
-h3 {
+#subtitle {
     font-size: 90%;
 }
 
@@ -80,8 +81,8 @@ input#option-task-name {
     width: 25ch;
 }
 
-input[type="text"]:invalid,
-input[type="text"]:user-invalid {
+input:invalid,
+input:user-invalid {
     background-color: pink;
 }
 
@@ -158,14 +159,6 @@ input[type="text"]:user-invalid {
     font-size: small;
 }
 
-.py-error {
-    color: black !important;
-    background: pink !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: none !important;
-}
-
 #footer,
 #footer table {
     width: 100%;
@@ -179,4 +172,12 @@ input[type="text"]:user-invalid {
 
 #footer td:last-child {
     text-align: right;
+}
+
+.py-error {
+    color: black !important;
+    background: pink !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
 }

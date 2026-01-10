@@ -3,6 +3,7 @@
 <head>
   <title>Steganography</title>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Language" content="en, ru">
   <meta name="author" content="Vasily Zakharov (vmzakhar@gmail.com)">
   <meta name="keywords" content="steganography larp стеганография РИ">
   <meta name="description" content="Applied visual cryptography for Larp">
@@ -11,14 +12,14 @@
   <meta name="application-name" content="Steganography">
   <meta name="msapplication-TileColor" content="burlywood">
   <meta name="theme-color" content="burlywood">
-  <link rel="icon" type="image/png" sizes="96x96" href="images/favicon-96.png">
-  <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
-  <link rel="shortcut icon" href="images/favicon.ico">
-  <link rel="apple-touch-icon" sizes="180x180" href="images/favicon-180.png">
-  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="96x96" href="./images/favicon-96.png">
+  <link rel="icon" type="image/svg+xml" href="./images/favicon.svg">
+  <link rel="shortcut icon" href="./images/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="./images/favicon-180.png">
+  <link rel="manifest" href="./manifest.json">
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.11.2/core.css">
-  <link rel="stylesheet" href="script.css">
-  <script type="module" src="bootstrap.js"></script>
+  <link rel="stylesheet" href="./main.css">
+  <script type="module" src="./bootstrap.js"></script>
   <script type="module">
     "use strict";
     /* jshint browser: true */
@@ -42,8 +43,8 @@
 <script type="py" src="./main.py" config="./pyscript.toml" target="#log"></script>
 <div id="flexColumn100">
   <div id="flex1">
-    <h1 id="title"><img alt="" src="images/favicon.svg">Steganography<span id="location"></span></h1>
-    <h3 id="subtitle">Applied visual cryptography for Larp</h3>
+    <h1 id="title"><img alt="" src="./images/favicon.svg">Steganography<span id="location"></span></h1>
+    <p id="subtitle">Applied visual cryptography for Larp</p>
     <pre id="log">Loading, please wait...<span>(if it takes too long, please refresh page or press F12 to check browser console)</span></pre>
     <div id="content" class="hidden">
       <div id="options">
@@ -133,7 +134,7 @@
         <button id="options-reset">Reset options to defaults</button>
       </div>
       <div id="template" class="image-block hidden">
-        <h2 class="image-title"></h2>
+        <h2 class="image-title">template</h2>
         <div class="image-upload-block">
           <button class="image-remove hidden" title="Click to remove this image from processing">Remove</button>
           <input class="image-upload" title="Click to upload a file to process" type="file" accept="image/*">

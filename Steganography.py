@@ -167,7 +167,7 @@ def processImage(image: Image, *,
     return processed
 
 @typechecked
-def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None = None, *, smooth: bool | None = None) -> tuple[Image, Image]:
+def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None = None, *, smooth: bool | None = None) -> tuple[Image, Image]:  # noqa: ARG001  # pylint: disable=unused-argument
     """
     Generates lock and key images from the specified source `Image`.
     If `lockMask` and/or `keyMask` are provided,
@@ -189,7 +189,7 @@ def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None 
     return (synthLock, synthKey)
 
 @typechecked
-def overlay(lock: Image, key: Image, *, border: bool | None = None) -> Image:
+def overlay(lock: Image, key: Image, *, border: bool | None = None) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
     """
     Emulates overlaying two 1-bit images one on top of the other,
     as if they were printed on transparent film.
