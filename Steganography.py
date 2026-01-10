@@ -159,6 +159,8 @@ def processImage(image: Image, *,
             resizeHeight = round(float(image.height) * resizeWidth / image.width)
         elif resizeHeight and not resizeWidth:
             resizeWidth = round(float(image.width) * resizeHeight / image.height)
+        assert resizeWidth
+        assert resizeHeight
         processed = processed.resize((resizeWidth, resizeHeight), Resampling.BICUBIC)
     if rotate:  # ToDo: Should we save rotate angle somewhere?
         processed = processed.rotate(choice(range(1, 359 + 1)), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background
@@ -237,6 +239,7 @@ __all__ = (
     'getMimeTypeFromImage',
     'imageToBytes',
     'loadImage',
+    'numpyVersion',
     'overlay',
     'pilVersion',
     'processImage',
