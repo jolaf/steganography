@@ -1,28 +1,27 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping  # noqa: TC003
+from contextlib import suppress
 from io import BytesIO
 from mimetypes import guess_type
-from random import randint
 from re import split
+from secrets import choice
 from sys import argv, exit as sysExit, stderr
 from typing import Any, Final, IO
 
 try:
     from beartype import beartype as typechecked
 except ImportError:
-    print("WARNING: beartype is not available, running fast with typing unchecked")
-
     def typechecked(func: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[no-redef]
         return func
 
-from PIL.Image import open as imageOpen, Dither, Image as Image, Resampling  # noqa: PLC0414
+from PIL import __version__ as pilVersion
+from PIL.Image import new as imageNew, open as imageOpen, Dither, Image, Resampling
 from PIL.ImageMode import getmode
-# noinspection PyProtectedMember
 from PIL._typing import StrOrBytesPath
 
-type ImagePath = StrOrBytesPath | IO[bytes] | BytesIO  # The last one is needed by beartype, though it's a bug
+type ImagePath = StrOrBytesPath | IO[bytes] | BytesIO  # The last one is needed by beartype, though it shouldn't be
 
 IMAGE_MODE_DESCRIPTIONS: Final[Mapping[str, str]] = {
     '1': '1-bit B&W',
@@ -58,29 +57,40 @@ def error(*args: Any) -> None:
     sysExit(1)
 
 @typechecked
-def loadImage(inp: ImagePath | bytes, fileName: str | None = None) -> Image:
-    image = imageOpen(BytesIO(inp) if isinstance(inp, bytes) else inp)
+def loadImage(source: ImagePath | bytes, fileName: str | None = None) -> Image:
+    """
+    Returns `Image` loaded from the specified file path, input stream or `bytes`.
+
+    `fileName` can be added as a hint to image format in cases
+    when `source` does not provide such a clue, like `BytesIO`.
+    """
+    image = imageOpen(BytesIO(source) if isinstance(source, bytes) else source)
     if not image.format:
-        image.format = getImageFormatFromExtension(fileName or inp)
+        image.format = getImageFormatFromExtension(fileName or source)
     return image
 
 @typechecked
 def saveImage(image: Image, path: ImagePath) -> None:
     image.save(path, getImageFormatFromExtension(path), optimize = True,
-               transparency = 1 if image.mode == '1' else None)  # `transparency` here sets the index of a color to make transparent, 1 is usually white
+               transparency = 1 if image.mode == '1' else None)  # `transparency` here sets the index of the color to make transparent, 1 is usually white
 
 @typechecked
 def imageToBytes(image: Image) -> bytes:
+    """
+    Returns the `Image` as `bytes` that can be written to a file
+    with extension corresponding to image format.
+    """
     stream = BytesIO()
     saveImage(image, stream)
     return stream.getvalue()
 
 @typechecked
 def hasAlpha(image: Image) -> bool:
-    return 'A' in image.getbands() or image.info.get('transparency') is not None  # The latter covers 1-bit B&W
+    return 'A' in image.getbands() or image.info.get('transparency') is not None  # The latter is for 1-bit B&W
 
 @typechecked
 def getImageMode(image: Image) -> str:
+    """Returns human-readable description of the specified `Image` mode."""
     mode = image.mode
     if mode.startswith('I'):
         typeStr = getmode(mode).typestr
@@ -94,77 +104,104 @@ def getImageMode(image: Image) -> str:
 
 @typechecked
 def getMimeTypeFromImage(image: Image) -> str:
+    """
+    Returns MIME type corresponding to the specified `Image` format.
+    If format is unknown or not specified, returns `image/png`.
+    """
     if image.format:
-        try:
+        with suppress(Exception):
             (mimeType, _encoding) = guess_type('image.' + image.format.lower())
             if mimeType:
                 return mimeType
-        except Exception:  # noqa: BLE001, S110
-            pass
     return 'image/png'
 
 @typechecked
 def getImageFormatFromExtension(path: ImagePath) -> str:
-    try:
+    with suppress(Exception):
         (mimeType, _encoding) = guess_type(path)  # type: ignore[arg-type]
         if mimeType and mimeType.startswith('image/'):
             return mimeType.split('/')[1].upper()
-    except Exception:  # noqa: BLE001, S110
-        pass
     return 'PNG'
 
 @typechecked
 def finalizeImage(image: Image) -> None:
+    """Improves further work with 1-bit B&W with Alpha images."""
     assert image.mode == '1'
     image.info = {'transparency': 1}
     if not image.format:
         image.format = 'PNG'
 
 @typechecked
-def processImage(image: Image, **options: Any) -> Image:
-    # Checks options:
-    # - resize: int | float | tuple[int | None, int | None]
-    # - rotate: bool
-    # - dither: bool
+def processImage(image: Image, *,
+                 resizeFactor: float | None = None,
+                 resizeWidth: int | None = None,
+                 resizeHeight: int | None = None,
+                 rotate: bool | None = None,
+                 dither: bool| None = None) -> Image:
+    """Converts the arbitrary `Image` to 1-bit B&W with Alpha format."""
     processed = grayscale = image.convert('L')  # 8-bit grayscale
-    if (resize := options.get('resize')) not in (None, 0, 1, (), (None, None)):  # int size tuple or float factor
-        assert resize
-        if isinstance(resize, Sequence):
-            assert len(resize) == 2 and all(r is None or isinstance(r, int) for r in resize) and any(isinstance(r, int) for r in resize), f"Bad resize options: {resize!r}"  # noqa: PT018
-            for r in resize:
-                if r is not None:
-                    assert isinstance(r, int) and r > 0, f"Bad resize options: {resize!r}"  # noqa: PT018
-            if resize[0] is None:
-                assert resize[1]
-                resize = (round(float(image.size[0]) * resize[1] / image.size[1]), resize[1])
-            elif resize[1] is None:
-                assert resize[0]
-                resize = (resize[0], round(float(image.size[1]) * resize[0] / image.size[0]))
-        else:  # resize is factor
-            assert isinstance(resize, (int, float)), f"Bad resize options: {resize!r}"
-            resize = tuple(round(d * resize) for d in image.size)
-        assert isinstance(resize, tuple) and len(resize) == 2 and all(isinstance(r, int) for r in resize), repr(resize) # noqa: PT018
-        processed = processed.resize(resize, Resampling.BICUBIC)
-    if options.get('rotate'):  # bool  # ToDo: Should we save rotate angle somewhere?
-        processed = processed.rotate(randint(1, 359), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background  # noqa: S311
+    if resizeFactor not in (None, 1) or resizeWidth is not None or resizeHeight is not None:
+        if resizeFactor is not None and (not isinstance(resizeFactor, int | float) or resizeFactor <= 0):
+            raise ValueError(f"Bad resizeFactor {resizeFactor}, must be positive int or float")
+        if resizeWidth is not None and (not isinstance(resizeWidth, int) or resizeWidth <= 0):
+            raise ValueError(f"Bad resizeWidth {resizeWidth}, must be positive int")
+        if resizeHeight is not None and (not isinstance(resizeHeight, int) or resizeHeight <= 0):
+            raise ValueError(f"Bad resizeHeight {resizeHeight}, must be positive int")
+        if resizeFactor:
+            if resizeWidth or resizeHeight:
+                raise ValueError("Either resizeFactor or resizeWidth/resizeHeight can be specified")
+            resizeWidth = round(resizeFactor * image.width)
+            resizeHeight = round(resizeFactor * image.height)
+        elif resizeWidth and not resizeHeight:
+            resizeHeight = round(float(image.height) * resizeWidth / image.width)
+        elif resizeHeight and not resizeWidth:
+            resizeWidth = round(float(image.width) * resizeHeight / image.height)
+        processed = processed.resize((resizeWidth, resizeHeight), Resampling.BICUBIC)
+    if rotate:  # ToDo: Should we save rotate angle somewhere?
+        processed = processed.rotate(choice(range(1, 359 + 1)), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background
 
     if image.mode == '1' and hasAlpha(image) and processed is grayscale:
-        return image  # Return original image as no changes were made
-    processed = processed.convert('1', dither = Dither.FLOYDSTEINBERG if options.get('dither') else Dither.NONE)  # 1-bit B&W
+        return image  # Return original image as it's in correct format and no changes were made
+    processed = processed.convert('1', dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)  # 1-bit B&W
     finalizeImage(processed)
     return processed
 
 @typechecked
-def synthesize(source: Image, lock: Image | None, key: Image | None, **options: Any) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
-    # Uses options:
-    # - smooth: bool
-    return Image()
+def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None = None, *, smooth: bool | None = None) -> tuple[Image, Image]:
+    """
+    Generates lock and key images from the specified source `Image`.
+    If `lockMask` and/or `keyMask` are provided,
+    they are used as visible hints on the corresponding output images.
+    """
+    arraySize = source.width * source.height
+    lockData = bytearray(arraySize)
+    keyData = bytearray(arraySize)
+    for (i, b) in enumerate(source.getdata()):
+        r = choice((0, 1))
+        lockData[i] = r
+        keyData[i] = r if b else 1 - r
+    synthLock = imageNew('1', source.size)
+    synthLock.putdata(lockData)
+    finalizeImage(synthLock)
+    synthKey = imageNew('1', source.size)
+    synthKey.putdata(keyData)
+    finalizeImage(synthKey)
+    return (synthLock, synthKey)
 
 @typechecked
-def testOverlay(lock: Image, key: Image, **options: Any) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
-    # Uses options:
-    # - border: bool
-    return Image()
+def overlay(lock: Image, key: Image, *, border: bool | None = None) -> Image:
+    """
+    Emulates overlaying two 1-bit images one on top of the other,
+    as if they were printed on transparent film.
+    """
+    assert lock.size == key.size
+    retData = bytearray(lock.width * lock.height)
+    for (i, (lb, kb)) in enumerate(zip(lock.getdata(), key.getdata(), strict = True)):
+        retData[i] = min(lb, kb)
+    ret = imageNew('1', lock.size)
+    ret.putdata(retData)
+    finalizeImage(ret)
+    return ret
 
 @typechecked
 def main(*args: str) -> None:
@@ -188,6 +225,19 @@ def main(*args: str) -> None:
     processed = processImage(image, **vars(options))
     saveImage(processed, 'processed.png')  # ToDo: Generate proper file names
     sysExit(0)
+
+__all__ = (
+    'Image',
+    'ImagePath',
+    'encrypt',
+    'getImageMode',
+    'getMimeTypeFromImage',
+    'imageToBytes',
+    'loadImage',
+    'overlay',
+    'pilVersion',
+    'processImage',
+)
 
 if __name__ == '__main__':
     main(*argv[1:])

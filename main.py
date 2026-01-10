@@ -6,11 +6,10 @@ PREFIX = "[python]"
 print(f"{PREFIX} Loading app")
 
 from asyncio import create_task, get_running_loop, sleep, AbstractEventLoop
-from collections.abc import Callable, Iterable, Iterator, Mapping  # noqa: TC003
+from collections.abc import Callable, Iterable, Iterator, Mapping  # noqa: TC003  # beartype needs this things in runtime
 from contextlib import suppress
 from datetime import datetime
 from enum import Enum
-# noinspection PyUnresolvedReferences
 from gettext import translation, GNUTranslations
 from itertools import chain
 from pathlib import Path
@@ -22,9 +21,11 @@ from types import TracebackType  # noqa: TC003
 from typing import cast, Any, ClassVar
 
 try:
-    from beartype import beartype as typechecked
+    from beartype import beartype as typechecked, __version__ as beartypeVersion
+    from beartype.roar import BeartypeException
 except ImportError:
     print(f"{PREFIX} WARNING: beartype is not available, running fast with typing unchecked")
+    beartypeVersion = None  # type: ignore[assignment]
 
     def typechecked(func: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[no-redef]
         return func
@@ -42,7 +43,6 @@ except ImportError:
     def getDefaultTaskName() -> str:
         return "steganography"
 
-# noinspection PyUnresolvedReferences
 from pyscript import document, when, storage, Storage
 from pyscript.web import page, Element  # pylint: disable=import-error, no-name-in-module
 from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
@@ -81,11 +81,8 @@ del location  # We won't need it anymore
 TEXT_NODE = Node.TEXT_NODE
 
 # JS types that don't work as runtime type annotations
-# noinspection PyTypeAliasRedeclaration
 type Blob = JsProxy  # type: ignore[no-redef]
-# noinspection PyTypeAliasRedeclaration
 type Event = JsProxy  # type: ignore[no-redef]
-# noinspection PyTypeAliasRedeclaration
 type Node = JsProxy  # type: ignore[no-redef]
 
 try:
@@ -93,7 +90,7 @@ try:
 except ImportError:
     pyodideVersion = "UNKNOWN"
 
-from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, processImage, synthesize, testOverlay, Image
+from Steganography import encrypt, getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, pilVersion, overlay, processImage, Image
 
 TagAttrValue = str | int | float | bool
 
@@ -435,7 +432,7 @@ class Options(Storage):
         return defaultValue if ret is None else ret
 
     def __setattr__(self, name: str, value: Any) -> None:
-        try:
+        with suppress(AttributeError):
             defaultValue = super().__getattribute__(name)
             if isinstance(defaultValue, TagAttrValue):
                 if isinstance(defaultValue, float):
@@ -444,8 +441,6 @@ class Options(Storage):
                     assert isinstance(value, type(defaultValue)), f"Incorrect type for option {name}: {type(value).__name__}, expected {type(defaultValue).__name__}"
                 self[name] = value
                 return
-        except AttributeError:
-            pass
         super().__setattr__(name, value)
 
 @typechecked
@@ -498,8 +493,11 @@ class ImageBlock:
         await cls.pipeline()
 
     @classmethod
-    async def process(cls, targetStages: Stage | Iterable[Stage], processFunction: Callable[..., Image | tuple[Image, ...]], sourceStages: Stage | Iterable[Stage]) -> None:
-        assert cls.options is not None
+    async def process(cls,
+                      targetStages: Stage | Iterable[Stage],
+                      processFunction: Callable[..., Image | tuple[Image, ...]],
+                      sourceStages: Stage | Iterable[Stage],
+                      options: Iterable[str] | None = None) -> None:
         sources = tuple(cls.ImageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.ImageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         if any(not source.image for source in sources):
@@ -513,7 +511,8 @@ class ImageBlock:
             t.startOperation(_("Processing image"))
         await repaint()
         try:
-            ret = processFunction(*(source.image for source in sources), **vars(cls.options))
+            assert cls.options is not None
+            ret = processFunction(*(source.image for source in sources), **{option: cls.options.get(option) or None for option in (options or ())})
             if isinstance(ret, Image):
                 ret = (ret,)
             assert len(ret) == len(targets), f"{processFunction.__name__}() returned {len(ret)} images, expected {len(targets)}"
@@ -529,13 +528,13 @@ class ImageBlock:
     @classmethod
     async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
         await repaint()
-        await cls.process(Stage.PROCESSED_SOURCE, processImage, Stage.SOURCE)
+        await cls.process(Stage.PROCESSED_SOURCE, processImage, Stage.SOURCE, ('resizeFactor', 'resizeWidth', 'resizeHeight', 'rotate', 'dither'))
         await cls.process(Stage.PROCESSED_LOCK, processImage, Stage.LOCK)
         await cls.process(Stage.PROCESSED_KEY, processImage, Stage.KEY)
         if not cls.ImageBlocks[Stage.PROCESSED_SOURCE].image:
             return
-        await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY), synthesize, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY))
-        await cls.process(Stage.KEY_OVER_LOCK_TEST, testOverlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY))  # ToDo: Somehow handle random rotation and location
+        await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY), encrypt, (Stage.PROCESSED_SOURCE, Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY), ('smooth',))
+        await cls.process(Stage.KEY_OVER_LOCK_TEST, overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY), ('border',))  # ToDo: Somehow handle random rotation and location
         for imageBlock in cls.ImageBlocks.values():
             imageBlock.dirty = False
 
@@ -583,7 +582,6 @@ class ImageBlock:
         async def uploadEventHandler(_e: Event) -> None:
             if (files := uploadTag.files).length:
                 file = files.item(0)  # JS API
-                # noinspection PyTypeChecker
                 await self.uploadFile(file.name, file)
 
         @when(CLICK, self.getElement('remove'))
@@ -754,11 +752,21 @@ def loopExceptionHandler(_loop: AbstractEventLoop, context: dict[str, Any]) -> N
 @typechecked
 async def main() -> None:
     log("Starting app")
+    sys.excepthook = mainExceptionHandler
+    get_running_loop().set_exception_handler(loopExceptionHandler)
     log("PyScript v" + pyscriptVersion)
     log("Pyodide v" + pyodideVersion)
     log("Python v" + pythonVersion)
-    sys.excepthook = mainExceptionHandler
-    get_running_loop().set_exception_handler(loopExceptionHandler)
+    log("Pillow v" + pilVersion)
+    if beartypeVersion:
+        try:
+            @typechecked
+            def test() -> int:
+                return 'notInt'  # type: ignore[return-value]
+            test()
+            raise RuntimeError("Beartype v" + beartypeVersion + " is not operating properly")
+        except BeartypeException:
+            log("Beartype v" + beartypeVersion + " up and watching")
     log("Configuring app")
     await ImageBlock.init()
     hide('log')

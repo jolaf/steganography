@@ -79,6 +79,6 @@ setTimeout(() => {
                 logElement.textContent = "ERROR: PyScript failed to load, do you have Internet access? Press F12 and check browser console for details.";
                 logElement.classList.add('error');
             }
-        }, 5000); // Wait 5 more seconds before deciding that PyScript failed to load
+        }, 20000); // Wait 20 more seconds before deciding that PyScript failed to load
     }
-}, 5000); // Wait 5 seconds before deciding that Pyodide failed to load
+}, 20000); // Wait 20 seconds before deciding that Pyodide failed to load
