@@ -12,26 +12,23 @@ from typing import Any, Final, IO
 try:
     from beartype import beartype as typechecked
 except ImportError:
-    print("WARNING: beartype is not available, typing is unchecked")
+    print("WARNING: beartype is not available, running fast with typing unchecked")
+
     def typechecked(func: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[no-redef]
         return func
 
 from PIL.Image import open as imageOpen, Dither, Image as Image, Resampling  # noqa: PLC0414
+from PIL.ImageMode import getmode
 # noinspection PyProtectedMember
 from PIL._typing import StrOrBytesPath
 
-ImagePath = StrOrBytesPath | IO[bytes] | BytesIO  # The last one is needed by beartype though it's a bug
+type ImagePath = StrOrBytesPath | IO[bytes] | BytesIO  # The last one is needed by beartype, though it's a bug
 
 IMAGE_MODE_DESCRIPTIONS: Final[Mapping[str, str]] = {
     '1': '1-bit B&W',
     'CMYK': '8-bit CMYK',
     'F': '32-bit Float',
     'HSV': '8-bit HSV',
-    'I': '32-bit signed Int',
-    'I;16': '16-bit unsigned Int',
-    'I;16B': '16-bit big endian unsigned Int',
-    'I;16L': '16-bit little endian unsigned Int',
-    'I;16N': '16-bit native endian unsigned Int',
     'L': '8-bit Grayscale',
     'LA': '8-bit Grayscale with Alpha',
     'La': '8-bit Grayscale with premultiplied Alpha',
@@ -44,6 +41,12 @@ IMAGE_MODE_DESCRIPTIONS: Final[Mapping[str, str]] = {
     'RGBX': '8-bit RGB with padding',
     'YCbCr': '8-bit YCbCr',
 }
+
+MAPPING_MODE_PARAMETERS: Final[tuple[Mapping[str, str | int], ...]] = (
+    { '<': 'little', '>': 'big' },
+    { 'i': 'signed', 'u': 'unsigned' },
+    { '2': 16, '4': 32 },
+)
 
 @typechecked
 def log(*args: Any) -> None:
@@ -64,7 +67,7 @@ def loadImage(inp: ImagePath | bytes, fileName: str | None = None) -> Image:
 @typechecked
 def saveImage(image: Image, path: ImagePath) -> None:
     image.save(path, getImageFormatFromExtension(path), optimize = True,
-               transparency = 1 if image.mode == '1' else None)  # White is transparent
+               transparency = 1 if image.mode == '1' else None)  # `transparency` here sets the index of a color to make transparent, 1 is usually white
 
 @typechecked
 def imageToBytes(image: Image) -> bytes:
@@ -73,8 +76,21 @@ def imageToBytes(image: Image) -> bytes:
     return stream.getvalue()
 
 @typechecked
+def hasAlpha(image: Image) -> bool:
+    return 'A' in image.getbands() or image.info.get('transparency') is not None  # The latter covers 1-bit B&W
+
+@typechecked
 def getImageMode(image: Image) -> str:
-    return IMAGE_MODE_DESCRIPTIONS.get(image.mode, image.mode)
+    mode = image.mode
+    if mode.startswith('I'):
+        typeStr = getmode(mode).typestr
+        assert len(typeStr) == 3, typeStr
+        (endian, signed, bits) = tuple(values[x] for (values, x) in zip(MAPPING_MODE_PARAMETERS, typeStr, strict = True))
+        return f"{bits}-bit {endian} endian {signed} Int"
+    description = IMAGE_MODE_DESCRIPTIONS.get(mode, mode)
+    if mode == '1' and hasAlpha(image):
+        return f"{description} with Alpha"
+    return description
 
 @typechecked
 def getMimeTypeFromImage(image: Image) -> str:
@@ -96,6 +112,13 @@ def getImageFormatFromExtension(path: ImagePath) -> str:
     except Exception:  # noqa: BLE001, S110
         pass
     return 'PNG'
+
+@typechecked
+def finalizeImage(image: Image) -> None:
+    assert image.mode == '1'
+    image.info = {'transparency': 1}
+    if not image.format:
+        image.format = 'PNG'
 
 @typechecked
 def processImage(image: Image, **options: Any) -> Image:
@@ -124,9 +147,12 @@ def processImage(image: Image, **options: Any) -> Image:
         processed = processed.resize(resize, Resampling.BICUBIC)
     if options.get('rotate'):  # bool  # ToDo: Should we save rotate angle somewhere?
         processed = processed.rotate(randint(1, 359), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background  # noqa: S311
-    if image.mode == '1' and processed is grayscale:  # No changes were made
-        return image
-    return processed.convert('1', dither = Dither.FLOYDSTEINBERG if options.get('dither') else Dither.NONE)  # 1-bit B&W
+
+    if image.mode == '1' and hasAlpha(image) and processed is grayscale:
+        return image  # Return original image as no changes were made
+    processed = processed.convert('1', dither = Dither.FLOYDSTEINBERG if options.get('dither') else Dither.NONE)  # 1-bit B&W
+    finalizeImage(processed)
+    return processed
 
 @typechecked
 def synthesize(source: Image, lock: Image | None, key: Image | None, **options: Any) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument

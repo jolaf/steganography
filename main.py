@@ -499,11 +499,14 @@ class ImageBlock:
 
     @classmethod
     async def process(cls, targetStages: Stage | Iterable[Stage], processFunction: Callable[..., Image | tuple[Image, ...]], sourceStages: Stage | Iterable[Stage]) -> None:
-        assert cls.options is not None, type(cls.options)
+        assert cls.options is not None
         sources = tuple(cls.ImageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
-        if any(not source.image for source in sources):
-            return
         targets = tuple(cls.ImageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
+        if any(not source.image for source in sources):
+            for t in targets:
+                await t.removeImage()
+            await repaint()
+            return
         for t in targets:
             t.startOperation(_("Processing image"))
         await repaint()
@@ -561,6 +564,7 @@ class ImageBlock:
 
         if not self.isUpload:
             self.hide('upload-block')
+            self.setFileName()
             return
 
         # Further configuration for upload blocks
@@ -572,12 +576,10 @@ class ImageBlock:
         @when(CHANGE, uploadTag)
         @typechecked
         async def uploadEventHandler(_e: Event) -> None:
-            if files := uploadTag.files:
+            if (files := uploadTag.files).length:
                 file = files.item(0)  # JS API
                 # noinspection PyTypeChecker
                 await self.uploadFile(file.name, file)
-            else:
-                await self.uploadFile()  # E.g. Esc was pressed at upload dialog
 
         @when(CLICK, self.getElement('remove'))
         @typechecked
@@ -629,6 +631,7 @@ class ImageBlock:
 
     def prepareBlock(self, description: str | None = None) -> None:
         self.setURL()
+        self.image = None
         self.hide('display-block')
         self.hide('remove')
         if description:
@@ -643,17 +646,17 @@ class ImageBlock:
         self.prepareBlock(message + "…")
 
     def completeOperation(self, image: Image, imageBytes: bytes) -> None:
-        self.image = image
-        self.setDescription(f"{len(imageBytes)} {_("bytes")} {image.format} {getImageMode(image)} {image.width}x{image.height}")
-        self.setURL(createObjectURLFromBytes(imageBytes, getMimeTypeFromImage(image)))
-        self.show('display-block')
         if self.isUpload:
             self.show('remove')
-        if self.source and self.image == self.source.image:
+        if self.source and image == self.source.image:
             self.image = self.source.image  # Make them identical to avoid storing duplicate data
             self.setURL()
             self.hide('block')
         else:
+            self.image = image
+            self.setURL(createObjectURLFromBytes(imageBytes, getMimeTypeFromImage(image)))
+            self.setDescription(f"{len(imageBytes)} {_("bytes")} {image.format} {getImageMode(image)} {image.width}x{image.height}")
+            self.show('display-block')
             self.show('block')
 
     async def resetUpload(self) -> None:
@@ -692,7 +695,7 @@ class ImageBlock:
                 self.error(_("loading image"), ex)
                 return
             self.setFileName(fileName)
-            self.completeOperation(image, imageToBytes(image))
+            self.completeOperation(image, imageBytes)
         else:
             self.setFileName()
 
