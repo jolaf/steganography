@@ -507,6 +507,8 @@ class ImageBlock:
                 await t.removeImage()
             await repaint()
             return
+        if not any(source.dirty for source in sources):
+            return
         for t in targets:
             t.startOperation(_("Processing image"))
         await repaint()
@@ -534,6 +536,8 @@ class ImageBlock:
             return
         await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY), synthesize, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY))
         await cls.process(Stage.KEY_OVER_LOCK_TEST, testOverlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY))  # ToDo: Somehow handle random rotation and location
+        for imageBlock in cls.ImageBlocks.values():
+            imageBlock.dirty = False
 
     def __init__(self, stage: Stage) -> None:
         self.stage = stage
@@ -544,6 +548,7 @@ class ImageBlock:
         self.image: Image | None = None
         self.fileName: str | None = None
         self.source: ImageBlock | None = None
+        self.dirty = False
 
         # Create DOM element
         block = getElementByID('template').clone(self.getElementID('block'))
@@ -658,6 +663,7 @@ class ImageBlock:
             self.setDescription(f"{len(imageBytes)} {_("bytes")} {image.format} {getImageMode(image)} {image.width}x{image.height}")
             self.show('display-block')
             self.show('block')
+        self.dirty = True
 
     async def resetUpload(self) -> None:
         assert self.isUpload
