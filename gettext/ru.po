@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Steganography 1.0\n"
 "POT-Creation-Date: 2026-01-05 14:31+0300\n"
-"PO-Revision-Date: 2026-01-10 17:08+0300\n"
+"PO-Revision-Date: 2026-01-10 21:52+0300\n"
 "Last-Translator: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language-Team: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language: ru\n"
@@ -196,7 +196,7 @@ msgstr "Исходный рисунок"
 
 #: main.py:526
 msgid "Lock mask"
-msgstr "Маска замка"
+msgstr "Маска замка́"
 
 #: main.py:526
 msgid "Key mask"
@@ -216,7 +216,7 @@ msgstr "Обработанная МК"
 
 #: main.py:526
 msgid "Generated lock"
-msgstr "Готовый замок"
+msgstr "Готовый замо́к"
 
 #: main.py:526
 msgid "Generated key"

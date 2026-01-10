@@ -90,7 +90,7 @@ try:
 except ImportError:
     pyodideVersion = "UNKNOWN"
 
-from Steganography import encrypt, getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, pilVersion, overlay, processImage, Image
+from Steganography import encrypt, getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, numpyVersion, pilVersion, overlay, processImage, Image
 
 TagAttrValue = str | int | float | bool
 
@@ -122,14 +122,15 @@ def toJsElement(element: Element | JsProxy) -> JsProxy:
     return getattr(element, '_dom_element', element)  # type: ignore[arg-type]
 
 @typechecked
-def log(*args: Any) -> None:
+def log(*args: Any, showToUser: bool = True) -> None:
     message = ' '.join(str(arg) for arg in args)
     print(f"{PREFIX} {message}")
-    logElement = getElementByID('log')
-    toJsElement(logElement).append(f"{datetime.now().astimezone().strftime('%H:%M:%S')} {PREFIX} {message}\n")  # https://github.com/pyscript/pyscript/issues/2418
-    test = message.upper()
-    if any(word in test for word in ('ERROR', 'EXCEPTION')):
-        logElement.classes.add('error')
+    if showToUser:
+        logElement = getElementByID('log')
+        toJsElement(logElement).append(f"{datetime.now().astimezone().strftime('%H:%M:%S')} {PREFIX} {message}\n")  # https://github.com/pyscript/pyscript/issues/2418
+        test = message.upper()
+        if any(word in test for word in ('ERROR', 'EXCEPTION')):
+            logElement.classes.add('error')
 
 @typechecked
 async def repaint() -> None:
@@ -146,11 +147,7 @@ async def blobToBytes(blob: Blob | JsProxy) -> bytes:
 
 @typechecked
 def getElementByID(elementID: str) -> Element:
-    try:
-        return page['#' + elementID][0]
-    except IndexError:
-        log("ERROR at getElementByID(): No element ID found:", elementID)
-        raise
+    return page['#' + elementID][0]
 
 @typechecked
 def hide(element: str | Element) -> None:
@@ -268,8 +265,7 @@ class Options(Storage):
         global _  # noqa: PLW0603  # pylint: disable=global-statement
         _ = (tr := cls.TRANSLATIONS[language]).gettext  # type: ignore[assignment]
         if (test := _(GETTEXT_TEST)) != (expected := f'{GETTEXT_TEST}_{language}'):
-            log(f"ERROR: gettext.{type(tr).__name__}({language}) is not configured properly, expected {expected}, got {test}")
-            return
+            raise ValueError(f"gettext.{type(tr).__name__}({language}) is not configured properly, expected {expected}, got {test}")
         log("Language set to", cls.LANGUAGES[language])
 
         for textNode in chain[Text].from_iterable(iterTextNodes(root)
@@ -520,8 +516,9 @@ class ImageBlock:
                 await t.removeImage()
             await repaint()
             return
-        if not any(source.dirty for source in sources):
+        if not any(source.dirty for source in sources):  # ToDo: Make some sources optional
             return
+        log(f"Processing {', '.join(source.stage.name for source in sources)} => {', '.join(target.stage.name for target in targets)}")
         for t in targets:
             t.startOperation(_("Processing image"))
         await repaint()
@@ -542,7 +539,6 @@ class ImageBlock:
 
     @classmethod
     async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
-        await repaint()
         await cls.process(Stage.PROCESSED_SOURCE, processImage, Stage.SOURCE, ('resizeFactor', 'resizeWidth', 'resizeHeight', 'rotate', 'dither'))
         await cls.process(Stage.PROCESSED_LOCK, processImage, Stage.LOCK)
         await cls.process(Stage.PROCESSED_KEY, processImage, Stage.KEY)
@@ -652,6 +648,8 @@ class ImageBlock:
     def error(self, message: str, exception: BaseException | None = None) -> None:
         self.setDescription(f"{_("ERROR")} {message}{f": {exception}" if exception else ''}")
         self.hide('remove')
+        if exception:
+            exceptionHandler("Exception at image processing", exception = exception, showToUser = False)
 
     def prepareBlock(self, description: str | None = None) -> None:
         self.setURL()
@@ -708,15 +706,18 @@ class ImageBlock:
             path = Path(filePath)
             fileName = path.name
             log("Fetching preloaded file:", fileName)
+            await repaint()
             imageBytes = await fetch(filePath).arrayBuffer()  # type: ignore[attr-defined]
         else:
             (imageBytes, fileName) = (None, None)
         if imageBytes:
             try:
                 log("Loading image:", fileName)
+                await repaint()
                 image = loadImage(imageBytes, fileName)
             except Exception as ex:  # noqa : BLE001
                 self.error(_("loading image"), ex)
+                await repaint()
                 return
             self.setFileName(fileName)
             self.completeOperation(image, imageBytes)
@@ -739,11 +740,14 @@ class ImageBlock:
         self.startOperation(_("Loading image"))
         await repaint()
         try:
+            log("Uploading image:", fileName)
+            await repaint()
             assert data, repr(data)
             imageBytes = await blobToBytes(data)
             image = loadImage(imageBytes)
         except Exception as ex:  # noqa : BLE001
             self.error(_("loading image"), ex)
+            await repaint()
             return
         self.setFileName(fileName)
         await self.saveImageToCache(imageBytes)
@@ -752,22 +756,37 @@ class ImageBlock:
         await self.pipeline()
 
 @typechecked
-def exceptionHandler(source: str, exceptionType: type[BaseException | None] | None = None, exception: BaseException | None = None, traceback: TracebackType | None = None) -> None:
+def exceptionHandler(problem: str,
+                     exceptionType: type[BaseException | None] | None = None,
+                     exception: BaseException | None = None,
+                     traceback: TracebackType | None = None,
+                     *,
+                     showToUser: bool = True,
+                     ) -> None:
     if exceptionType is None:
         exceptionType = type(exception)
     if traceback is None and exception:
         traceback = exception.__traceback__
     # Filter traceback to remove empty lines:
     tracebackStr = '\n' + '\n'.join(line for line in '\n'.join(extract_tb(traceback).format()).splitlines() if line.strip()) if traceback else ''
-    log(f"\nERROR Uncaught exception in {source}, type {exceptionType.__name__}: {exception}{tracebackStr}\n\nPlease make a screenshot and report it to @jolaf at Telegram or VK or to vmzakhar@gmail.com. Thank you!\n")
+    log(f"""
+ERROR {problem}, type {exceptionType.__name__}: {exception}{tracebackStr}
+
+Please make a screenshot and report it to @jolaf at Telegram or VK or to vmzakhar@gmail.com. Thank you!
+""", showToUser = showToUser)
 
 @typechecked
-def mainExceptionHandler(exceptionType: type[BaseException] | None = None, exception: BaseException | None = None, traceback: TracebackType | None = None) -> None:
-    exceptionHandler("main thread", exceptionType, exception, traceback)
+def mainExceptionHandler(exceptionType: type[BaseException] | None = None,
+                         exception: BaseException | None = None,
+                         traceback: TracebackType | None = None) -> None:
+    exceptionHandler("Uncaught exception in main thread",
+                     exceptionType, exception, traceback)
 
 @typechecked
-def loopExceptionHandler(_loop: AbstractEventLoop, context: dict[str, Any]) -> None:
-    exceptionHandler("async loop", exception = context.get('exception'))
+def loopExceptionHandler(_loop: AbstractEventLoop,
+                         context: dict[str, Any]) -> None:
+    exceptionHandler("Uncaught exception in async loop",
+                     exception = context.get('exception'))
 
 @typechecked
 async def main() -> None:
@@ -778,6 +797,7 @@ async def main() -> None:
     log("Pyodide v" + pyodideVersion)
     log("Python v" + pythonVersion)
     log("Pillow v" + pilVersion)
+    log("NumPy v" + numpyVersion)
     if beartypeVersion:
         try:
             @typechecked
@@ -788,10 +808,12 @@ async def main() -> None:
         except BeartypeException:
             log("Beartype v" + beartypeVersion + " is up and watching, remove it from `pyscript.toml` to make things faster")
     log("Configuring app")
+    await repaint()
     await ImageBlock.init()
     hide('log')
     show('content')
     log("Running app")
+    await repaint()
 
 if __name__ == '__main__':
     create_task(main())  # noqa: RUF006

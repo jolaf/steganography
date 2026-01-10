@@ -21,6 +21,8 @@ from PIL.Image import new as imageNew, open as imageOpen, Dither, Image, Resampl
 from PIL.ImageMode import getmode
 from PIL._typing import StrOrBytesPath
 
+from numpy import __version__ as numpyVersion
+
 type ImagePath = StrOrBytesPath | Buffer | IO[bytes] | BytesIO  # The last one is needed by beartype, though it shouldn't be
 
 IMAGE_MODE_DESCRIPTIONS: Final[Mapping[str, str]] = {

@@ -1,6 +1,6 @@
 plugins = ["!py-editor", "!py-game", "!py-terminal"]
 
-packages = ["pillow", "coolname", "beartype"]
+packages = ["pillow", "numpy", "coolname"]
 
 [files]
 "./main.py" = ""
