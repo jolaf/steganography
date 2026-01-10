@@ -6,7 +6,7 @@ PREFIX = "[python]"
 print(f"{PREFIX} Loading app")
 
 from asyncio import create_task, get_running_loop, sleep, AbstractEventLoop
-from collections.abc import Callable, Iterable, Iterator, Mapping  # noqa: TC003  # beartype needs this things in runtime
+from collections.abc import Buffer, Callable, Iterable, Iterator, Mapping  # noqa: TC003  # beartype needs this things in runtime
 from contextlib import suppress
 from datetime import datetime
 from enum import Enum
@@ -43,7 +43,7 @@ except ImportError:
     def getDefaultTaskName() -> str:
         return "steganography"
 
-from pyscript import document, when, storage, Storage
+from pyscript import document, fetch, when, storage, Storage
 from pyscript.web import page, Element  # pylint: disable=import-error, no-name-in-module
 from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
 
@@ -136,8 +136,8 @@ async def repaint() -> None:
     await sleep(0.1)  # Yield control to the browser so that repaint could happen
 
 @typechecked
-def createObjectURLFromBytes(byteArray: bytes, mimeType: str) -> str:
-    blob = newBlob([newUint8Array(byteArray),], to_js({TYPE: mimeType}))  # to_js() converts Python dict into JS object
+def createObjectURLFromBytes(buffer: Buffer, mimeType: str) -> str:
+    blob = newBlob([newUint8Array(buffer),], to_js({TYPE: mimeType}))  # to_js() converts Python dict into JS object
     return createObjectURL(blob)
 
 @typechecked
@@ -239,6 +239,7 @@ class Options(Storage):
         'META'  : ('content',),
         'A'     : ('title',),
         'BUTTON': ('title',),
+        'DIV'   : ('title',),
          INPUT  : ('title', 'placeholder',),
     }
 
@@ -404,7 +405,7 @@ class Options(Storage):
 }}
         ''')
 
-    async def saveFile(self, name: str, data: bytes | None, fileName: str | None = None) -> None:
+    async def saveFile(self, name: str, data: Buffer | None, fileName: str | None = None) -> None:
         if data:
             assert fileName, repr(fileName)
             self[f'file-{name}'] = bytearray(data)  # Write to database
@@ -413,9 +414,9 @@ class Options(Storage):
         else:
             await self.delFile(name)
 
-    def loadFile(self, name: str) -> tuple[bytes | None, str | None]:
+    def loadFile(self, name: str) -> tuple[bytearray | None, str | None]:
         data: bytearray | None = self.get(f'file-{name}')  # Read from database
-        return (bytes(data) if data else None, self.get(f'file-{name}-fileName'))
+        return (data, self.get(f'file-{name}-fileName'))
 
     async def delFile(self, name: str) -> None:
         with suppress(KeyError):
@@ -496,6 +497,8 @@ class ImageBlock:
             cls.ImageBlocks[stage] = ImageBlock(stage)
         for (stage, block) in cls.ImageBlocks.items():
             block.source = cls.ImageBlocks.get(cls.SOURCES.get(stage))  # type: ignore[arg-type]
+            if block.isUpload:
+                await block.loadImageFromCache()
         await cls.pipeline()
 
     @classmethod
@@ -568,25 +571,31 @@ class ImageBlock:
 
         # Assign named IDs to all children that have image-* classes
         for element in block.find('*'):
-            if element.tagName == 'LABEL' and (for_ := getAttr(element, 'for')) and for_.startswith(self.TEMPLATE_PREFIX):
+            if element.tagName == 'LABEL' and (for_ := getAttr(element, 'for')) and for_.startswith(self.TEMPLATE_PREFIX):  # ToDo: Add constants for all repeated strings
                 setAttr(element, 'for', f'{for_[len(self.TEMPLATE_PREFIX):]}-{self.name}')
             for clas in element.classes:
                 if clas.startswith(self.ID_PREFIX):
                     setAttr(element, 'id', f'{clas}-{self.name}')
                     break
 
-        # Adjust children attributes
+        # Further configure children
         self.setAttr('title', TEXT, _(self.BLOCK_NAMES[self.stage]))
+        downloadLink = self.getElement('download-link')
+
+        @when(CLICK, self.getElement('download'))
+        @typechecked
+        async def downloadEventHandler(_e: Event) -> None:
+            downloadLink.click()
 
         if not self.isUpload:
             self.hide('upload-block')
             self.setFileName()
             return
 
-        # Further configuration for upload blocks
+        # Further configuration for upload blocks only
+
         self.hide('description')
         self.show('block')
-        self.loadImageFromCache()
         uploadTag = self.getElement('upload')
 
         @when(CHANGE, uploadTag)
@@ -660,7 +669,7 @@ class ImageBlock:
     def startOperation(self, message: str) -> None:
         self.prepareBlock(message + "…")
 
-    def completeOperation(self, image: Image, imageBytes: bytes) -> None:
+    def completeOperation(self, image: Image, buffer: Buffer) -> None:
         if self.isUpload:
             self.show('remove')
         if self.source and image == self.source.image:
@@ -669,8 +678,8 @@ class ImageBlock:
             self.hide('block')
         else:
             self.image = image
-            self.setURL(createObjectURLFromBytes(imageBytes, getMimeTypeFromImage(image)))
-            self.setDescription(f"{len(imageBytes)} {_("bytes")} {image.format} {getImageMode(image)} {image.width}x{image.height}")
+            self.setURL(createObjectURLFromBytes(buffer, getMimeTypeFromImage(image)))
+            self.setDescription(f"{len(buffer)} {_("bytes")} {image.format} {getImageMode(image)} {image.width}x{image.height}")  # type: ignore[arg-type]
             self.show('display-block')
             self.show('block')
         self.dirty = True
@@ -680,15 +689,15 @@ class ImageBlock:
         assert self.stage in self.PRELOADED_FILES
         assert self.options is not None
         await self.options.delFile(self.name)
-        self.loadImageFromCache()
+        await self.loadImageFromCache()
 
-    async def saveImageToCache(self, byteArray: bytes) -> None:
+    async def saveImageToCache(self, buffer: Buffer) -> None:
         assert self.isUpload
         assert self.options is not None
         assert self.fileName, repr(self.fileName)
-        await self.options.saveFile(self.name, byteArray, self.fileName)
+        await self.options.saveFile(self.name, buffer, self.fileName)
 
-    def loadImageFromCache(self) -> None:
+    async def loadImageFromCache(self) -> None:
         assert self.isUpload
         assert self.options is not None
         (imageBytes, fileName) = self.options.loadFile(self.name)
@@ -698,9 +707,8 @@ class ImageBlock:
         elif filePath := self.PRELOADED_FILES.get(self.stage):
             path = Path(filePath)
             fileName = path.name
-            log("Loading preloaded file:", fileName)
-            with path.open('rb') as f:
-                imageBytes = f.read()
+            log("Fetching preloaded file:", fileName)
+            imageBytes = await fetch(filePath).arrayBuffer()  # type: ignore[attr-defined]
         else:
             (imageBytes, fileName) = (None, None)
         if imageBytes:

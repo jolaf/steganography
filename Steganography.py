@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser
-from collections.abc import Callable, Mapping  # noqa: TC003
+from collections.abc import Buffer, Callable, Mapping
 from contextlib import suppress
 from io import BytesIO
 from mimetypes import guess_type
@@ -21,7 +21,7 @@ from PIL.Image import new as imageNew, open as imageOpen, Dither, Image, Resampl
 from PIL.ImageMode import getmode
 from PIL._typing import StrOrBytesPath
 
-type ImagePath = StrOrBytesPath | IO[bytes] | BytesIO  # The last one is needed by beartype, though it shouldn't be
+type ImagePath = StrOrBytesPath | Buffer | IO[bytes] | BytesIO  # The last one is needed by beartype, though it shouldn't be
 
 IMAGE_MODE_DESCRIPTIONS: Final[Mapping[str, str]] = {
     '1': '1-bit B&W',
@@ -57,32 +57,33 @@ def error(*args: Any) -> None:
     sysExit(1)
 
 @typechecked
-def loadImage(source: ImagePath | bytes, fileName: str | None = None) -> Image:
+def loadImage(source: ImagePath | Buffer, fileName: str | None = None) -> Image:
     """
-    Returns `Image` loaded from the specified file path, input stream or `bytes`.
+    Returns `Image` loaded from the specified file path,
+    input stream or any bytes `Buffer`.
 
     `fileName` can be added as a hint to image format in cases
     when `source` does not provide such a clue, like `BytesIO`.
     """
-    image = imageOpen(BytesIO(source) if isinstance(source, bytes) else source)
+    image = imageOpen(BytesIO(source) if isinstance(source, Buffer) else source)
     if not image.format:
         image.format = getImageFormatFromExtension(fileName or source)
     return image
 
 @typechecked
 def saveImage(image: Image, path: ImagePath) -> None:
-    image.save(path, getImageFormatFromExtension(path), optimize = True,
+    image.save(path, getImageFormatFromExtension(path), optimize = True,  # type: ignore[arg-type]
                transparency = 1 if image.mode == '1' else None)  # `transparency` here sets the index of the color to make transparent, 1 is usually white
 
 @typechecked
-def imageToBytes(image: Image) -> bytes:
+def imageToBytes(image: Image) -> Buffer:
     """
-    Returns the `Image` as `bytes` that can be written to a file
+    Returns the `Image` as bytes `Buffer` that can be written to a file
     with extension corresponding to image format.
     """
     stream = BytesIO()
     saveImage(image, stream)
-    return stream.getvalue()
+    return stream.getbuffer()
 
 @typechecked
 def hasAlpha(image: Image) -> bool:
