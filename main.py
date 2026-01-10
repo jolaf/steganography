@@ -493,9 +493,12 @@ class ImageBlock:
             cls.ImageBlocks[stage] = ImageBlock(stage)
         for (stage, block) in cls.ImageBlocks.items():
             block.source = cls.ImageBlocks.get(cls.SOURCES.get(stage))  # type: ignore[arg-type]
+
+    @classmethod
+    async def loadImages(cls) -> None:
+        for block in cls.ImageBlocks.values():
             if block.isUpload:
                 await block.loadImageFromCache()
-        await cls.pipeline()
 
     @classmethod
     async def resetUploads(cls) -> None:
@@ -812,6 +815,8 @@ async def main() -> None:
     await ImageBlock.init()
     hide('log')
     show('content')
+    await ImageBlock.loadImages()
+    await ImageBlock.pipeline()
     log("Running app")
     await repaint()
 
