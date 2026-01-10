@@ -17,7 +17,7 @@ except ImportError:
         return func
 
 from PIL import __version__ as pilVersion
-from PIL.Image import new as imageNew, open as imageOpen, Dither, Image, Resampling
+from PIL.Image import new as imageNew, open as imageOpen, Dither, Image, Resampling, Transpose
 from PIL.ImageMode import getmode
 from PIL._typing import StrOrBytesPath
 
@@ -135,11 +135,13 @@ def finalizeImage(image: Image) -> None:
         image.format = 'PNG'
 
 @typechecked
-def processImage(image: Image, *,
+def processImage(image: Image,
+                 *,
                  resizeFactor: float | None = None,
                  resizeWidth: int | None = None,
                  resizeHeight: int | None = None,
-                 rotate: bool | None = None,
+                 randomRotate: bool | None = None,
+                 randomFlip: bool | None = None,
                  dither: bool| None = None) -> Image:
     """Converts the arbitrary `Image` to 1-bit B&W with Alpha format."""
     processed = grayscale = image.convert('L')  # 8-bit grayscale
@@ -162,11 +164,12 @@ def processImage(image: Image, *,
         assert resizeWidth
         assert resizeHeight
         processed = processed.resize((resizeWidth, resizeHeight), Resampling.BICUBIC)
-    if rotate:  # ToDo: Should we save rotate angle somewhere?
+    if randomRotate:  # ToDo: Should we save rotate angle and flip bit somewhere?
         processed = processed.rotate(choice(range(1, 359 + 1)), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background
-
+    if randomFlip and choice((False, True)):
+        processed = processed.transpose(Transpose.FLIP_LEFT_RIGHT)
     if image.mode == '1' and hasAlpha(image) and processed is grayscale:
-        return image  # Return original image as it's in correct format and no changes were made
+        return image  # Return original image as it's in correct format and no changes were actually made
     processed = processed.convert('1', dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)  # 1-bit B&W
     finalizeImage(processed)
     return processed

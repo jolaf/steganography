@@ -511,23 +511,26 @@ class ImageBlock:
                       targetStages: Stage | Iterable[Stage],
                       processFunction: Callable[..., Image | tuple[Image, ...]],
                       sourceStages: Stage | Iterable[Stage],
+                      optionalSourceStages: Stage | Iterable[Stage] | None = None,
+                      *,
                       options: Iterable[str] | None = None) -> None:
         sources = tuple(cls.ImageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.ImageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         if any(not source.image for source in sources):
             for t in targets:
-                await t.removeImage()
+                await t.removeImage()  # ToDo: Make sure images further down the chain get removed too
             await repaint()
             return
-        if not any(source.dirty for source in sources):  # ToDo: Make some sources optional
+        optionalSources = tuple(cls.ImageBlocks[stage] for stage in ((optionalSourceStages,) if isinstance(optionalSourceStages, Stage) else optionalSourceStages or ()))
+        if not any(source.dirty for source in chain(sources, optionalSources)):
             return
-        log(f"Processing {', '.join(source.stage.name for source in sources)} => {', '.join(target.stage.name for target in targets)}")
+        log(f"Processing {', '.join(source.stage.name for source in chain(sources, optionalSources))} => {', '.join(target.stage.name for target in targets)}")
         for t in targets:
             t.startOperation(_("Processing image"))
         await repaint()
         try:
             assert cls.options is not None
-            ret = processFunction(*(source.image for source in sources), **{option: cls.options.get(option) or None for option in (options or ())})
+            ret = processFunction(*(source.image for source in chain(sources, optionalSources)), **{option: cls.options.get(option) or None for option in (options or ())})
             if isinstance(ret, Image):
                 ret = (ret,)
             assert len(ret) == len(targets), f"{processFunction.__name__}() returned {len(ret)} images, expected {len(targets)}"
@@ -542,13 +545,12 @@ class ImageBlock:
 
     @classmethod
     async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
-        await cls.process(Stage.PROCESSED_SOURCE, processImage, Stage.SOURCE, ('resizeFactor', 'resizeWidth', 'resizeHeight', 'rotate', 'dither'))
+        await cls.process(Stage.PROCESSED_SOURCE, processImage, Stage.SOURCE, options = ('resizeFactor', 'resizeWidth', 'resizeHeight', 'randomRotate', 'dither'))
         await cls.process(Stage.PROCESSED_LOCK, processImage, Stage.LOCK)
         await cls.process(Stage.PROCESSED_KEY, processImage, Stage.KEY)
-        if not cls.ImageBlocks[Stage.PROCESSED_SOURCE].image:
-            return
-        await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY), encrypt, (Stage.PROCESSED_SOURCE, Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY), ('smooth',))
-        await cls.process(Stage.KEY_OVER_LOCK_TEST, overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY), ('border',))  # ToDo: Somehow handle random rotation and location
+        await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY), encrypt, Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY), options =('smooth',))
+        await cls.process(Stage.KEY_OVER_LOCK_TEST, overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY), options = ('border',))  # ToDo: Somehow handle random rotation and location
+        # ToDo: Do better job on passing options
         for imageBlock in cls.ImageBlocks.values():
             imageBlock.dirty = False
 
@@ -601,7 +603,7 @@ class ImageBlock:
         @typechecked
         async def uploadEventHandler(_e: Event) -> None:
             if (files := uploadTag.files).length:
-                file = files.item(0)  # JS API
+                file = files.item(0)  # JS FileList API
                 await self.uploadFile(file.name, file)
 
         @when(CLICK, self.getElement('remove'))
@@ -654,8 +656,9 @@ class ImageBlock:
         if exception:
             exceptionHandler("Exception at image processing", exception = exception, showToUser = False)
 
-    def prepareBlock(self, description: str | None = None) -> None:
+    def clean(self, description: str | None = None) -> None:
         self.setURL()
+        self.dirty = bool(self.image)
         self.image = None
         self.hide('display-block')
         self.hide('remove')
@@ -668,7 +671,7 @@ class ImageBlock:
                 self.hide('block')
 
     def startOperation(self, message: str) -> None:
-        self.prepareBlock(message + "…")
+        self.clean(message + "…")
 
     def completeOperation(self, image: Image, buffer: Buffer) -> None:
         if self.isUpload:
@@ -734,7 +737,7 @@ class ImageBlock:
                 await self.options.saveFile(self.name, self.REMOVED, Path(filePath).name)
             else:
                 await self.options.delFile(self.name)
-        self.prepareBlock()
+        self.clean()
 
     async def uploadFile(self, fileName: str | None = None, data: Blob | JsProxy | None = None) -> None:
         assert self.isUpload
