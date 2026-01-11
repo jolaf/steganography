@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Steganography 1.0\n"
 "POT-Creation-Date: 2026-01-05 14:31+0300\n"
-"PO-Revision-Date: 2026-01-10 21:52+0300\n"
+"PO-Revision-Date: 2026-01-11 03:34+0300\n"
 "Last-Translator: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language-Team: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language: ru\n"
@@ -225,3 +225,11 @@ msgstr "Готовый ключ"
 #: main.py:526
 msgid "Overlay test"
 msgstr "Тест наложения"
+
+#: index.html:128
+msgid "emulates grayscale, but hardens decryption"
+msgstr "пытается передать оттенки серого, но усложняет дешифровку"
+
+#: index.html:133
+msgid "doubles the image resolution"
+msgstr "удваивает размеры изображения"

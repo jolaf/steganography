@@ -11,22 +11,33 @@ from sys import argv, exit as sysExit, stderr
 from typing import Any, Final, IO
 
 try:
+    from PIL import __version__ as pilVersion
+    from PIL.Image import fromarray as ImageFromArray, new as ImageNew, open as imageOpen, Dither, Image, Resampling, Transpose
+    from PIL.ImageMode import getmode as imageGetMode
+    from PIL._typing import StrOrBytesPath
+except ImportError as ex:
+    raise ImportError(f"{type(ex).__name__}: {ex}\n\nThis module requires Pillow, please install v11.3 or later: https://pypi.org/project/pillow/\n") from ex
+
+try:
+    import numpy as np
+    import numpy.typing as npt
+    numpyVersion = np.__version__
+except ImportError as ex:
+    raise ImportError(f"{type(ex).__name__}: {ex}\n\nThis module requires NumPy, please install v2.2.5 or later: https://pypi.org/project/numpy/\n") from ex
+
+try:
     from beartype import beartype as typechecked
 except ImportError:
     def typechecked(func: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[no-redef]
         return func
 
-from PIL import __version__ as pilVersion
-from PIL.Image import new as imageNew, open as imageOpen, Dither, Image, Resampling, Transpose
-from PIL.ImageMode import getmode
-from PIL._typing import StrOrBytesPath
+type ImagePath = StrOrBytesPath | Buffer | IO[bytes] | BytesIO  # The last one is needed for beartype, though it shouldn't be
 
-from numpy import __version__ as numpyVersion
-
-type ImagePath = StrOrBytesPath | Buffer | IO[bytes] | BytesIO  # The last one is needed by beartype, though it shouldn't be
+PNG: Final[str] = 'PNG'
+BW1: Final[str] = '1'
 
 IMAGE_MODE_DESCRIPTIONS: Final[Mapping[str, str]] = {
-    '1': '1-bit B&W',
+    BW1: '1-bit B&W',
     'CMYK': '8-bit CMYK',
     'F': '32-bit Float',
     'HSV': '8-bit HSV',
@@ -48,6 +59,15 @@ MAPPING_MODE_PARAMETERS: Final[tuple[Mapping[str, str | int], ...]] = (
     { 'i': 'signed', 'u': 'unsigned' },
     { '2': 16, '4': 32 },
 )
+
+SMOOTH_COMBINATIONS: Final[tuple[npt.NDArray[np.bool], ...]] = tuple(np.array(v, bool) for v in (
+    ((0, 0), (1, 1)),
+    ((0, 1), (0, 1)),
+    ((0, 1), (1, 0)),
+    ((1, 0), (0, 1)),
+    ((1, 0), (1, 0)),
+    ((1, 1), (0, 0)),
+))
 
 @typechecked
 def log(*args: Any) -> None:
@@ -75,7 +95,7 @@ def loadImage(source: ImagePath | Buffer, fileName: str | None = None) -> Image:
 @typechecked
 def saveImage(image: Image, path: ImagePath) -> None:
     image.save(path, getImageFormatFromExtension(path), optimize = True,  # type: ignore[arg-type]
-               transparency = 1 if image.mode == '1' else None)  # `transparency` here sets the index of the color to make transparent, 1 is usually white
+               transparency = 1 if image.mode == BW1 else None)  # `transparency` here sets the index of the color to make transparent, 1 is usually white
 
 @typechecked
 def imageToBytes(image: Image) -> Buffer:
@@ -96,12 +116,12 @@ def getImageMode(image: Image) -> str:
     """Returns human-readable description of the specified `Image` mode."""
     mode = image.mode
     if mode.startswith('I'):
-        typeStr = getmode(mode).typestr
+        typeStr = imageGetMode(mode).typestr
         assert len(typeStr) == 3, typeStr
         (endian, signed, bits) = tuple(values[x] for (values, x) in zip(MAPPING_MODE_PARAMETERS, typeStr, strict = True))
         return f"{bits}-bit {endian} endian {signed} Int"
     description = IMAGE_MODE_DESCRIPTIONS.get(mode, mode)
-    if mode == '1' and hasAlpha(image):
+    if mode == BW1 and hasAlpha(image):
         return f"{description} with Alpha"
     return description
 
@@ -124,15 +144,15 @@ def getImageFormatFromExtension(path: ImagePath) -> str:
         (mimeType, _encoding) = guess_type(path)  # type: ignore[arg-type]
         if mimeType and mimeType.startswith('image/'):
             return mimeType.split('/')[1].upper()
-    return 'PNG'
+    return PNG
 
 @typechecked
 def finalizeImage(image: Image) -> None:
     """Improves further work with 1-bit B&W with Alpha images."""
-    assert image.mode == '1'
+    assert image.mode == BW1
     image.info = {'transparency': 1}
     if not image.format:
-        image.format = 'PNG'
+        image.format = PNG
 
 @typechecked
 def processImage(image: Image,
@@ -168,9 +188,9 @@ def processImage(image: Image,
         processed = processed.rotate(choice(range(1, 359 + 1)), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background
     if randomFlip and choice((False, True)):
         processed = processed.transpose(Transpose.FLIP_LEFT_RIGHT)
-    if image.mode == '1' and hasAlpha(image) and processed is grayscale:
+    if image.mode == BW1 and hasAlpha(image) and processed is grayscale:
         return image  # Return original image as it's in correct format and no changes were actually made
-    processed = processed.convert('1', dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)  # 1-bit B&W
+    processed = processed.convert(BW1, dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)
     finalizeImage(processed)
     return processed
 
@@ -181,32 +201,38 @@ def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None 
     If `lockMask` and/or `keyMask` are provided,
     they are used as visible hints on the corresponding output images.
     """
-    arraySize = source.width * source.height
-    lockData = bytearray(arraySize)
-    keyData = bytearray(arraySize)
-    for (i, b) in enumerate(source.getdata()):
-        r = choice((0, 1))
-        lockData[i] = r
-        keyData[i] = r if b else 1 - r
-    synthLock = imageNew('1', source.size)
-    synthLock.putdata(lockData)
-    finalizeImage(synthLock)
-    synthKey = imageNew('1', source.size)
-    synthKey.putdata(keyData)
-    finalizeImage(synthKey)
-    return (synthLock, synthKey)
+    # PIL/NumPy array indexes are `y` first, `x` second
+    dimensions = (source.height * 2, source.width * 2) if smooth else (source.height, source.width)
+    lockArray = np.empty(dimensions, bool)
+    keyArray = np.empty(dimensions, bool)
+    for ((y, x), b) in np.ndenumerate(np.asarray(source, bool)):
+        # b: False is black, True is transparent
+        if smooth:
+            x *= 2 ; y *= 2  # noqa: E702, PLW2901  # pylint: disable=multiple-statements, redefined-loop-name
+            lockArray[y : y + 2, x : x + 2] = r2 = choice(SMOOTH_COMBINATIONS)
+            keyArray[y : y + 2, x : x + 2] = r2 if b else np.invert(r2)
+        else:
+            lockArray[y, x] = r = choice((False, True))
+            keyArray[y, x] = r if b else not r
+    lockImage = ImageFromArray(lockArray)
+    keyImage = ImageFromArray(keyArray)
+    finalizeImage(lockImage)
+    finalizeImage(keyImage)
+    return (lockImage, keyImage)
 
 @typechecked
-def overlay(lock: Image, key: Image, *, border: bool | None = None) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
+def overlay(lockImage: Image, keyImage: Image, *, border: bool | None = None) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
     """
-    Emulates overlaying two 1-bit images one on top of the other,
+    Emulates precise overlaying of two 1-bit images one on top of the other,
     as if they were printed on transparent film.
     """
-    assert lock.size == key.size
-    retData = bytearray(lock.width * lock.height)
-    for (i, (lb, kb)) in enumerate(zip(lock.getdata(), key.getdata(), strict = True)):
+    assert lockImage.mode == BW1
+    assert keyImage.mode == BW1
+    assert lockImage.size == keyImage.size
+    retData = bytearray(lockImage.width * lockImage.height)  # ToDo: rewrite using NumPy
+    for (i, (lb, kb)) in enumerate(zip(lockImage.getdata(), keyImage.getdata(), strict = True)):
         retData[i] = min(lb, kb)
-    ret = imageNew('1', lock.size)
+    ret = ImageNew(BW1, lockImage.size)
     ret.putdata(retData)
     finalizeImage(ret)
     return ret

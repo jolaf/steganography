@@ -1,8 +1,5 @@
 Provide proper instructions if loading fails: github pages, python web server, npm web server, turn off CORS
 Regenerate at options change
-Lock result
-Key result
-Test
 Add "Download All" button
 Make upload button translatable (hide <input ="type">)
 Test with offline PyScript
