@@ -30,17 +30,17 @@
     }
   </script>
   <script type="module" src="https://pyscript.net/releases/2025.11.2/core.js"></script>
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-E9101DVB96"></script>
+  <!-- script async src="https://www.googletagmanager.com/gtag/js?id=G-E9101DVB96"></script>
   <script type="module">
     window.dataLayer = window.dataLayer || [];
     function gtag() { dataLayer.push(arguments); }
     gtag('js', new Date());
     gtag('config', 'G-E9101DVB96');
-  </script>
+  </script -->
 </head>
 <body>
-<script type="py" src="./main.py" config="./main.toml" target="#log"></script>
-<script type="py" worker name="workerlib" src="./workerlib.py" config="./worker.toml"></script>
+<script type="py" src="./src/main.py" config="./main.toml" target="#log"></script>
+<script type="py" worker name="workerlib" src="./src/workerlib.py" config="./worker.toml"></script>
 <div id="flexColumn100">
   <div id="flex1">
     <h1 id="title"><img alt="" src="./images/favicon.svg">Steganography<span id="location"></span></h1>
