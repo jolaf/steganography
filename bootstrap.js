@@ -26,7 +26,7 @@ function log(message, prefix = 'javascript') {
 }
 window.log = log;
 
-log("Started JavaScript");
+log("Bootstrapping");
 
 function pyscriptLog(message) {
     log(message, 'pyscript');
@@ -49,7 +49,7 @@ addEventListener('py:done', () => {
 
 const consoleWarn = console.warn;
 console.warn = function (...args) {
-    if (args.length > 0 && args[0].startsWith('Pyodide') && args[0].includes('might not support')) {
+    if (args.length > 0 && /^Pyodide.*might not support/.test(args[0])) {
         return;  // Avoiding stupid useless warnings during PyScript booting
     }
     consoleWarn(...args);

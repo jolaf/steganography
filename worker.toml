@@ -1,0 +1,9 @@
+packages = ["pillow", "numpy"] # , "beartype"]
+
+sync_main_only = true
+
+[files]
+"./Steganography.py" = ""
+
+[exports]
+"Steganography" = ["encrypt", "overlay", "processImage"]

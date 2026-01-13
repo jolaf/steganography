@@ -11,7 +11,6 @@ from sys import argv, exit as sysExit, stderr
 from typing import Any, Final, IO
 
 try:
-    from PIL import __version__ as pilVersion
     from PIL.Image import fromarray as ImageFromArray, new as ImageNew, open as imageOpen, Dither, Image, Resampling, Transpose
     from PIL.ImageMode import getmode as imageGetMode
     from PIL._typing import StrOrBytesPath
@@ -21,7 +20,7 @@ except ImportError as ex:
 try:
     import numpy as np
     import numpy.typing as npt
-    numpyVersion = np.__version__
+    np.zeros((100,100))  # Warm-up JIT
 except ImportError as ex:
     raise ImportError(f"{type(ex).__name__}: {ex}\n\nThis module requires NumPy, please install v2.2.5 or later: https://pypi.org/project/numpy/\n") from ex
 
@@ -79,7 +78,7 @@ def error(*args: Any) -> None:
     sysExit(1)
 
 @typechecked
-def loadImage(source: ImagePath | Buffer, fileName: str | None = None) -> Image:
+def loadImage(source: ImagePath, fileName: str | None = None) -> Image:
     """
     Returns `Image` loaded from the specified file path,
     input stream or any bytes `Buffer`.
@@ -268,9 +267,7 @@ __all__ = (
     'getMimeTypeFromImage',
     'imageToBytes',
     'loadImage',
-    'numpyVersion',
     'overlay',
-    'pilVersion',
     'processImage',
 )
 

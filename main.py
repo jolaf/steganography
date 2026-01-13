@@ -1,12 +1,12 @@
-# ruff: noqa: E402  # pylint: disable=wrong-import-position
+# ruff: noqa: E402  # pylint: disable=wrong-import-order, wrong-import-position
 # Note: this module is PyScript-only, it won't work outside of browser
 from __future__ import annotations
 
 PREFIX = "[python]"
 print(f"{PREFIX} Loading app")
 
-from asyncio import create_task, get_running_loop, sleep, AbstractEventLoop
-from collections.abc import Buffer, Callable, Iterable, Iterator, Mapping  # noqa: TC003  # beartype needs this things in runtime
+from asyncio import create_task, gather, get_running_loop, sleep, AbstractEventLoop
+from collections.abc import Buffer, Callable, Iterable, Iterator, Mapping  # noqa: TC003  # beartype needs these things in runtime
 from contextlib import suppress
 from datetime import datetime
 from enum import Enum
@@ -43,7 +43,8 @@ except ImportError:
     def getDefaultTaskName() -> str:
         return "steganography"
 
-from pyscript import document, fetch, when, storage, Storage
+from pyscript import document, fetch, when
+from pyscript import storage, Storage
 from pyscript.web import page, Element  # pylint: disable=import-error, no-name-in-module
 from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
 
@@ -90,7 +91,12 @@ try:
 except ImportError:
     pyodideVersion = "UNKNOWN"
 
-from Steganography import encrypt, getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, numpyVersion, pilVersion, overlay, processImage, Image
+from numpy import __version__ as numpyVersion
+from PIL import __version__ as pilVersion
+
+from workerlib import workerCall
+
+from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, Image
 
 TagAttrValue = str | int | float | bool
 
@@ -142,7 +148,7 @@ def createObjectURLFromBytes(buffer: Buffer, mimeType: str) -> str:
     return createObjectURL(blob)
 
 @typechecked
-async def blobToBytes(blob: Blob | JsProxy) -> bytes:
+async def blobToBytes(blob: Blob) -> bytes:
     return (await blob.arrayBuffer()).to_bytes()
 
 @typechecked
@@ -199,7 +205,7 @@ def dispatchEvent(element: str | Element, eventType: str) -> None:
     element.dispatchEvent(newEvent(eventType))
 
 @typechecked
-def iterTextNodes(root: Element | JsProxy | None = None) -> Iterator[Node]:
+def iterTextNodes(root: Element | None = None) -> Iterator[Node]:
     walker = createTreeWalker(toJsElement(root or page.html), NodeFilter.SHOW_TEXT)
     while node := walker.nextNode():
         assert node.nodeType == TEXT_NODE, node.nodeType
@@ -509,7 +515,7 @@ class ImageBlock:
     @classmethod
     async def process(cls,
                       targetStages: Stage | Iterable[Stage],
-                      processFunction: Callable[..., Image | tuple[Image, ...]],
+                      processFunctionName: str,
                       sourceStages: Stage | Iterable[Stage],
                       optionalSourceStages: Stage | Iterable[Stage] | None = None,
                       *,
@@ -530,10 +536,12 @@ class ImageBlock:
         await repaint()
         try:
             assert cls.options is not None
-            ret = processFunction(*(source.image for source in chain(sources, optionalSources)), **{option: cls.options.get(option) or None for option in (options or ())})
+            ret = await workerCall(processFunctionName, *(source.image for source in chain(sources, optionalSources)), **{option: cls.options.get(option) or None for option in (options or ())})
             if isinstance(ret, Image):
                 ret = (ret,)
-            assert len(ret) == len(targets), f"{processFunction.__name__}() returned {len(ret)} images, expected {len(targets)}"
+            assert ret, repr(ret)
+            assert isinstance(ret[0], Image), f"{type(ret)} {type(ret[0])}"
+            assert len(ret) == len(targets), f"{processFunctionName}() returned {len(ret)} images, expected {len(targets)}"
             for (target, image) in zip(targets, ret, strict = True):
                 target.completeOperation(image, imageToBytes(image))
         except Exception as ex:  # noqa : BLE001
@@ -545,11 +553,21 @@ class ImageBlock:
 
     @classmethod
     async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
-        await cls.process(Stage.PROCESSED_SOURCE, processImage, Stage.SOURCE, options = ('resizeFactor', 'resizeWidth', 'resizeHeight', 'randomRotate', 'dither'))
-        await cls.process(Stage.PROCESSED_LOCK, processImage, Stage.LOCK)
-        await cls.process(Stage.PROCESSED_KEY, processImage, Stage.KEY)
-        await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY), encrypt, Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY), options =('smooth',))
-        await cls.process(Stage.KEY_OVER_LOCK_TEST, overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY), options = ('border',))  # ToDo: Somehow handle random rotation and location
+        await gather(
+            cls.process(Stage.PROCESSED_SOURCE,
+                        'processImage', Stage.SOURCE,
+                        options = ('resizeFactor', 'resizeWidth', 'resizeHeight', 'randomRotate', 'dither')),
+            cls.process(Stage.PROCESSED_LOCK,
+                        'processImage', Stage.LOCK),
+            cls.process(Stage.PROCESSED_KEY,
+                        'processImage', Stage.KEY),
+        )
+        await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
+                          'encrypt', Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
+                          options = ('smooth',))
+        await cls.process(Stage.KEY_OVER_LOCK_TEST,
+                          'overlay', (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
+                          options = ('border',))  # ToDo: Somehow handle random rotation and location
         # ToDo: Do better job on passing options
         for imageBlock in cls.ImageBlocks.values():
             imageBlock.dirty = False
@@ -739,7 +757,7 @@ class ImageBlock:
                 await self.options.delFile(self.name)
         self.clean()
 
-    async def uploadFile(self, fileName: str | None = None, data: Blob | JsProxy | None = None) -> None:
+    async def uploadFile(self, fileName: str | None = None, data: Blob | None = None) -> None:
         assert self.isUpload
         if not fileName:  # E.g. Esc was pressed at upload dialog
             return
@@ -812,7 +830,7 @@ async def main() -> None:
             test()
             raise RuntimeError("Beartype v" + beartypeVersion + " is not operating properly")
         except BeartypeException:
-            log("Beartype v" + beartypeVersion + " is up and watching, remove it from `pyscript.toml` to make things faster")
+            log("Beartype v" + beartypeVersion + " is up and watching, remove it from `main.toml` to make things faster")
     log("Configuring app")
     await repaint()
     await ImageBlock.init()
