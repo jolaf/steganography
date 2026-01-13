@@ -11,7 +11,7 @@ from sys import argv, exit as sysExit, stderr
 from typing import Any, Final, IO
 
 try:
-    from PIL.Image import fromarray as ImageFromArray, new as ImageNew, open as imageOpen, Dither, Image, Resampling, Transpose
+    from PIL.Image import fromarray as ImageFromArray, open as imageOpen, Dither, Image, Resampling, Transpose
     from PIL.ImageMode import getmode as imageGetMode
     from PIL._typing import StrOrBytesPath
 except ImportError as ex:
@@ -205,8 +205,7 @@ def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None 
     lockArray = np.empty(dimensions, bool)
     keyArray = np.empty(dimensions, bool)
     for ((y, x), b) in np.ndenumerate(np.asarray(source, bool)):
-        # b: False is black, True is transparent
-        if smooth:
+        if smooth:  # b: False is black, True is transparent
             x *= 2 ; y *= 2  # noqa: E702, PLW2901  # pylint: disable=multiple-statements, redefined-loop-name
             lockArray[y : y + 2, x : x + 2] = r2 = choice(SMOOTH_COMBINATIONS)
             keyArray[y : y + 2, x : x + 2] = r2 if b else np.invert(r2)
@@ -228,11 +227,7 @@ def overlay(lockImage: Image, keyImage: Image, *, border: bool | None = None) ->
     assert lockImage.mode == BW1
     assert keyImage.mode == BW1
     assert lockImage.size == keyImage.size
-    retData = bytearray(lockImage.width * lockImage.height)  # ToDo: rewrite using NumPy
-    for (i, (lb, kb)) in enumerate(zip(lockImage.getdata(), keyImage.getdata(), strict = True)):
-        retData[i] = min(lb, kb)
-    ret = ImageNew(BW1, lockImage.size)
-    ret.putdata(retData)
+    ret = ImageFromArray(np.minimum(np.asarray(lockImage), np.asarray(keyImage)))
     finalizeImage(ret)
     return ret
 
@@ -255,7 +250,7 @@ def main(*args: str) -> None:
                 error('Invalid resize argument: ', size)
             options.resize = tuple(tokens)  # pylint: disable=redefined-variable-type
     image = loadImage(options.inputImage)
-    processed = processImage(image, **vars(options))
+    processed = processImage(image, **vars(options)) or image
     saveImage(processed, 'processed.png')  # ToDo: Generate proper file names
     sysExit(0)
 

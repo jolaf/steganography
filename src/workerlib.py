@@ -129,7 +129,7 @@ if RUNNING_IN_WORKER:
         return loggedWrapper
 
     @serialized
-    def connect(data: bytes) -> bytes:
+    def connect(data: bytes) -> bytes:  # ToDo: Return list of exported names and add them to module globals() in main thread
         if data == CONNECT_REQUEST:
             log("Connected to main thread, ready for requests")
             return CONNECT_RESPONSE

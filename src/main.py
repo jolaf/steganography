@@ -536,8 +536,12 @@ class ImageBlock:
         await repaint()
         try:
             assert cls.options is not None
-            ret = await workerCall(processFunctionName, *(source.image for source in chain(sources, optionalSources)), **{option: cls.options.get(option) or None for option in (options or ())})
-            if isinstance(ret, Image):
+            sourceImages = tuple(source.image for source in chain(sources, optionalSources))
+            options = {option: value for (option, value) in ((option, cls.options.get(option)) for option in (options or ())) if value}
+            ret = await workerCall(processFunctionName, *sourceImages, **options)
+            if ret is None:  # No changes were made, use original images  # pylint: disable=consider-using-assignment-expr
+                ret = sourceImages
+            elif isinstance(ret, Image):
                 ret = (ret,)
             assert ret, repr(ret)
             assert isinstance(ret[0], Image), f"{type(ret)} {type(ret[0])}"
