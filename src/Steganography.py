@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser
+from asyncio import run, to_thread
 from collections.abc import Buffer, Callable, Mapping
 from contextlib import suppress
 from io import BytesIO
@@ -11,7 +12,7 @@ from sys import argv, exit as sysExit, stderr
 from typing import Any, Final, IO
 
 try:
-    from PIL.Image import fromarray as ImageFromArray, open as imageOpen, Dither, Image, Resampling, Transpose
+    from PIL.Image import fromarray as ImageFromArray, open as imageOpen, Dither, Image, Resampling
     from PIL.ImageMode import getmode as imageGetMode
     from PIL._typing import StrOrBytesPath
 except ImportError as ex:
@@ -154,16 +155,16 @@ def finalizeImage(image: Image) -> None:
         image.format = PNG
 
 @typechecked
-def processImage(image: Image,
+async def asyncProcessImage(image: Image,
                  *,
                  resizeFactor: float | None = None,
                  resizeWidth: int | None = None,
                  resizeHeight: int | None = None,
                  randomRotate: bool | None = None,
                  randomFlip: bool | None = None,
-                 dither: bool| None = None) -> Image:
+                 dither: bool| None = None) -> Image | None:
     """Converts the arbitrary `Image` to 1-bit B&W with Alpha format."""
-    processed = grayscale = image.convert('L')  # 8-bit grayscale
+    processed = grayscale = await to_thread(image.convert, 'L')  # 8-bit grayscale
     if resizeFactor not in (None, 1) or resizeWidth is not None or resizeHeight is not None:
         if resizeFactor is not None and (not isinstance(resizeFactor, int | float) or resizeFactor <= 0):
             raise ValueError(f"Bad resizeFactor {resizeFactor}, must be positive int or float")
@@ -182,16 +183,20 @@ def processImage(image: Image,
             resizeWidth = round(float(image.width) * resizeHeight / image.height)
         assert resizeWidth
         assert resizeHeight
-        processed = processed.resize((resizeWidth, resizeHeight), Resampling.BICUBIC)
+        processed = await to_thread(processed.resize, (resizeWidth, resizeHeight), Resampling.BICUBIC)
     if randomRotate:  # ToDo: Should we save rotate angle and flip bit somewhere?
-        processed = processed.rotate(choice(range(1, 359 + 1)), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background
+        processed = await to_thread(processed.rotate, choice(range(1, 359 + 1)), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background
     if randomFlip and choice((False, True)):
-        processed = processed.transpose(Transpose.FLIP_LEFT_RIGHT)
+        processed = ImageFromArray(np.fliplr(np.asarray(processed)))
     if image.mode == BW1 and hasAlpha(image) and processed is grayscale:
-        return image  # Return original image as it's in correct format and no changes were actually made
-    processed = processed.convert(BW1, dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)
+        return None  # Indicates that processing was useless and original image could be used as it was
+    processed = await to_thread(processed.convert, BW1, dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)
     finalizeImage(processed)
     return processed
+
+@typechecked
+def processImage(*args: Any, **kwargs: Any) -> Image | None:
+    return run(asyncProcessImage(*args, **kwargs))
 
 @typechecked
 def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None = None, *, smooth: bool | None = None) -> tuple[Image, Image]:  # noqa: ARG001  # pylint: disable=unused-argument

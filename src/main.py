@@ -5,12 +5,13 @@ from __future__ import annotations
 PREFIX = "[python]"
 print(f"{PREFIX} Loading app")
 
-from asyncio import create_task, gather, get_running_loop, sleep, AbstractEventLoop
-from collections.abc import Buffer, Callable, Iterable, Iterator, Mapping  # noqa: TC003  # beartype needs these things in runtime
+from asyncio import create_task, gather, get_running_loop, sleep, to_thread, AbstractEventLoop
+from collections.abc import Awaitable, Buffer, Callable, Iterable, Iterator, Mapping, Sequence  # noqa: TC003  # beartype needs these things in runtime
 from contextlib import suppress
 from datetime import datetime
 from enum import Enum
 from gettext import translation, GNUTranslations
+from inspect import iscoroutinefunction
 from itertools import chain
 from pathlib import Path
 from re import findall, match
@@ -94,9 +95,7 @@ except ImportError:
 from numpy import __version__ as numpyVersion
 from PIL import __version__ as pilVersion
 
-from workerlib import workerCall
-
-from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, Image
+from Steganography import encrypt, getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, overlay, asyncProcessImage, Image
 
 TagAttrValue = str | int | float | bool
 
@@ -515,7 +514,7 @@ class ImageBlock:
     @classmethod
     async def process(cls,
                       targetStages: Stage | Iterable[Stage],
-                      processFunctionName: str,
+                      processFunction: Callable[..., Image | Sequence[Image] | None] | Callable[..., Awaitable[Image | Sequence[Image] | None]],
                       sourceStages: Stage | Iterable[Stage],
                       optionalSourceStages: Stage | Iterable[Stage] | None = None,
                       *,
@@ -538,14 +537,18 @@ class ImageBlock:
             assert cls.options is not None
             sourceImages = tuple(source.image for source in chain(sources, optionalSources))
             options = {option: value for (option, value) in ((option, cls.options.get(option)) for option in (options or ())) if value}
-            ret = await workerCall(processFunctionName, *sourceImages, **options)
-            if ret is None:  # No changes were made, use original images  # pylint: disable=consider-using-assignment-expr
+            if iscoroutinefunction(processFunction):  # pylint: disable=consider-ternary-expression
+                ret = await processFunction(*sourceImages, **options)
+            else:
+                ret = await to_thread(processFunction, *sourceImages, **options)
+            if ret is None:  # No changes were made, use original image
+                assert len(sourceImages) == 1 and sourceImages[0], sourceImages  # noqa: PT018
                 ret = sourceImages
             elif isinstance(ret, Image):
                 ret = (ret,)
             assert ret, repr(ret)
             assert isinstance(ret[0], Image), f"{type(ret)} {type(ret[0])}"
-            assert len(ret) == len(targets), f"{processFunctionName}() returned {len(ret)} images, expected {len(targets)}"
+            assert len(ret) == len(targets), f"{processFunction.__name__}() returned {len(ret)} images, expected {len(targets)}"
             for (target, image) in zip(targets, ret, strict = True):
                 target.completeOperation(image, imageToBytes(image))
         except Exception as ex:  # noqa : BLE001
@@ -559,18 +562,18 @@ class ImageBlock:
     async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
         await gather(
             cls.process(Stage.PROCESSED_SOURCE,
-                        'processImage', Stage.SOURCE,
+                        asyncProcessImage, Stage.SOURCE,
                         options = ('resizeFactor', 'resizeWidth', 'resizeHeight', 'randomRotate', 'dither')),
             cls.process(Stage.PROCESSED_LOCK,
-                        'processImage', Stage.LOCK),
+                        asyncProcessImage, Stage.LOCK),
             cls.process(Stage.PROCESSED_KEY,
-                        'processImage', Stage.KEY),
+                        asyncProcessImage, Stage.KEY),
         )
         await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
-                          'encrypt', Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
+                          encrypt, Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
                           options = ('smooth',))
         await cls.process(Stage.KEY_OVER_LOCK_TEST,
-                          'overlay', (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
+                          overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
                           options = ('border',))  # ToDo: Somehow handle random rotation and location
         # ToDo: Do better job on passing options
         for imageBlock in cls.ImageBlocks.values():
