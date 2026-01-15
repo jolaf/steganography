@@ -83,7 +83,7 @@ del location  # We won't need it anymore
 TEXT_NODE = Node.TEXT_NODE
 
 # JS types that don't work as runtime type annotations
-type Blob = JsProxy  # type: ignore[no-redef]
+type Blob = JsProxy  # type: ignore[no-redef]  # ToDo: File a bug about this
 type Event = JsProxy  # type: ignore[no-redef]
 type Node = JsProxy  # type: ignore[no-redef]
 
@@ -95,7 +95,9 @@ except ImportError:
 from numpy import __version__ as numpyVersion
 from PIL import __version__ as pilVersion
 
-from Steganography import encrypt, getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, overlay, asyncProcessImage, Image
+from workerlib import connectWorker, Worker
+
+from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, Image
 
 TagAttrValue = str | int | float | bool
 
@@ -489,6 +491,7 @@ class ImageBlock:
     ImageBlocks: ClassVar[dict[Stage, ImageBlock]] = {}
 
     options: ClassVar[Options | None] = None
+    worker: ClassVar[Worker | None] = None
 
     @classmethod
     async def init(cls) -> None:
@@ -498,6 +501,7 @@ class ImageBlock:
             cls.ImageBlocks[stage] = ImageBlock(stage)
         for (stage, block) in cls.ImageBlocks.items():
             block.source = cls.ImageBlocks.get(cls.SOURCES.get(stage))  # type: ignore[arg-type]
+        cls.worker = await connectWorker('workerlib')
 
     @classmethod
     async def loadImages(cls) -> None:
@@ -536,8 +540,8 @@ class ImageBlock:
         try:
             assert cls.options is not None
             sourceImages = tuple(source.image for source in chain(sources, optionalSources))
-            options = {option: value for (option, value) in ((option, cls.options.get(option)) for option in (options or ())) if value}
-            if iscoroutinefunction(processFunction):  # pylint: disable=consider-ternary-expression
+            options = {option: value for (option, value) in ((option, cls.options.get(option)) for option in (options or ())) if value}  # ToDo: Add method to Options to filter default values
+            if iscoroutinefunction(processFunction) or isinstance(processFunction, JsProxy):  # pylint: disable=consider-ternary-expression
                 ret = await processFunction(*sourceImages, **options)
             else:
                 ret = await to_thread(processFunction, *sourceImages, **options)
@@ -560,24 +564,27 @@ class ImageBlock:
 
     @classmethod
     async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
+        log("Started pipeline")
+        assert cls.worker
         await gather(
             cls.process(Stage.PROCESSED_SOURCE,
-                        asyncProcessImage, Stage.SOURCE,
+                        cls.worker.asyncProcessImage, Stage.SOURCE,  # type: ignore[attr-defined]
                         options = ('resizeFactor', 'resizeWidth', 'resizeHeight', 'randomRotate', 'dither')),
             cls.process(Stage.PROCESSED_LOCK,
-                        asyncProcessImage, Stage.LOCK),
+                        cls.worker.asyncProcessImage, Stage.LOCK),  # type: ignore[attr-defined]
             cls.process(Stage.PROCESSED_KEY,
-                        asyncProcessImage, Stage.KEY),
+                        cls.worker.asyncProcessImage, Stage.KEY),  # type: ignore[attr-defined]
         )
         await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
-                          encrypt, Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
+                          cls.worker.encrypt, Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),  # type: ignore[attr-defined]
                           options = ('smooth',))
         await cls.process(Stage.KEY_OVER_LOCK_TEST,
-                          overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
+                          cls.worker.overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),  # type: ignore[attr-defined]
                           options = ('border',))  # ToDo: Somehow handle random rotation and location
         # ToDo: Do better job on passing options
         for imageBlock in cls.ImageBlocks.values():
             imageBlock.dirty = False
+        log("Completed pipeline")
 
     def __init__(self, stage: Stage) -> None:
         self.stage = stage
@@ -838,17 +845,17 @@ async def main() -> None:
             raise RuntimeError("Beartype v" + beartypeVersion + " is not operating properly")
         except BeartypeException:
             log("Beartype v" + beartypeVersion + " is up and watching, remove it from `main.toml` to make things faster")
-    log("Configuring app")
     await repaint()
     await ImageBlock.init()
     hide('log')
     show('content')
+    log("Loading cached images")
     await ImageBlock.loadImages()
     await ImageBlock.pipeline()
-    log("Running app")
     await repaint()
+    log("Started app")
 
 if __name__ == '__main__':
-    create_task(main())  # noqa: RUF006
+    create_task(main())  # `create_task()` is only needed to silence static checkers that don't like `await` in global module code  # noqa: RUF006
 
 print(f"{PREFIX} Loaded app")

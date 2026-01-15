@@ -21,7 +21,7 @@ except ImportError as ex:
 try:
     import numpy as np
     import numpy.typing as npt
-    np.zeros((100,100))  # Warm-up JIT
+    np.zeros((100, 100))  # Warm-up JIT
 except ImportError as ex:
     raise ImportError(f"{type(ex).__name__}: {ex}\n\nThis module requires NumPy, please install v2.2.5 or later: https://pypi.org/project/numpy/\n") from ex
 
@@ -157,7 +157,7 @@ def finalizeImage(image: Image) -> None:
 @typechecked
 async def asyncProcessImage(image: Image,
                  *,
-                 resizeFactor: float | None = None,
+                 resizeFactor: float | int | None = None,  # noqa: PYI041  # bug in beartype requires it
                  resizeWidth: int | None = None,
                  resizeHeight: int | None = None,
                  randomRotate: bool | None = None,

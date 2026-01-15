@@ -1,13 +1,16 @@
 #
 # Note: this library is intended for PyScript apps, it's mostly useless outside of browser
 #
-# To create a worker, you have two ways:
+# This lib wraps all calls from main thread to worker in decorators that unpack `JsProxy`
+# objects in function arguments and return values.
+#
+# To create a worker with this lib, you have two ways:
 #
 # 1.
 # index.html:
-# <script type="py" worker name="workerlib" src="./workerlib.py" config="./worker.toml"></script>
+# <script type="py" worker name="workerlib" src="./workerlib.py" config="./workerlib.toml"></script>
 #
-# worker.toml:
+# workerlib.toml:
 # [files]
 # "./YourModule1.py" = ""
 # "./YourModule2.py" = ""
@@ -35,8 +38,14 @@
 #
 # In main PyScript module, in both cases, go like this:
 #
-# from workerlib import workerCall
-# ret = await workerCall('func1', *args, **kwargs)
+# import workerlib
+# ret = await workerlib.worker.func1(*args, **kwargs)  # ToDo: update
+# OR
+# ret = await workerlib.func1(*args, **kwargs)
+#
+# OR
+# from workerlib import *
+# ret = await func1(*args, **kwargs)
 #
 
 # ToDo: Maybe import decorators from some another module too, the same way, and list (additional) decorators to use in a config option?
@@ -47,18 +56,23 @@
 # ToDo: Find section [worker] in config, treat as dict, get name, other entries with keys = modules, values = functions, import them, wrap them, export them?
 # ToDo: Maybe import decorators from some another module too, the same way, and list (additional) decorators to use in a config option?
 
-from collections.abc import Awaitable, Buffer, Callable, Iterable, Mapping
+from collections.abc import Coroutine, Buffer, Callable, Iterable, Mapping, Sequence
 from functools import wraps
 from typing import Any, Never
 
 from pyscript import RUNNING_IN_WORKER
 
-from Steganography import imageToBytes, loadImage, Image
+from pyodide.ffi import JsProxy  # pylint: disable=import-error, no-name-in-module
+
+from Steganography import imageToBytes, loadImage, Image  # ToDo: Remove this, add filters through config
 
 PREFIX = ""
 
 CONNECT_REQUEST = b'__REQUEST__'
 CONNECT_RESPONSE = b'__RESPONSE__'
+
+__all__: Sequence[str]
+__export__: Sequence[str]
 
 def log(*args: Any) -> None:
     print(PREFIX, *args)
@@ -71,6 +85,8 @@ def to_py(obj: Any) -> Any:
         return obj.to_py()
     if hasattr(obj, 'to_bytes'):
         return obj.to_bytes()
+    if isinstance(obj, Mapping):
+        return {to_py(k): to_py(v) for (k, v) in obj.items()}
     if isinstance(obj, Iterable):
         return tuple(to_py(obj) for obj in obj)
     return obj
@@ -78,12 +94,15 @@ def to_py(obj: Any) -> Any:
 if RUNNING_IN_WORKER:
 
     from importlib import import_module
+    from inspect import iscoroutinefunction
+    from itertools import chain
 
     PREFIX = "[worker]"
+    __export__ = ()
 
     log("Starting worker")
 
-    try:  # To turn runtime typechecking on, add "beartype" to `packages` array in your `worker.toml`
+    try:  # To turn runtime typechecking on, add "beartype" to `packages` array in your `workerlib.toml`
         from beartype import beartype as typechecked, __version__
         log(f"Beartype v{__version__} is up and watching, remove it from worker configuration to make things faster")
     except ImportError:
@@ -92,22 +111,33 @@ if RUNNING_IN_WORKER:
         def typechecked(func: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[no-redef]
             return func
 
-    def serialized(func: Callable[..., Any]) -> Callable[..., Any]:
+    @typechecked
+    def serialized(func: Callable[..., Any | Coroutine[None, None, Any]]) -> Callable[..., Coroutine[None, None, Any]]:
         @wraps(func)
-        def serializedWrapper(*args: Any, **kwargs: Any) -> Any:
+        @typechecked
+        async def serializedWrapper(*args: Any, **kwargs: Any) -> Any:
             assert not kwargs  # kwargs get passed to workers as last of args, of type dict
             args = tuple(to_py(arg) for arg in args)
             if args and isinstance(args[-1], dict):
                 kwargs = args[-1]
                 args = args[:-1]
-            return func(*args, **kwargs)
+            if iscoroutinefunction(func):  # pylint: disable=consider-ternary-expression
+                ret = await func(*args, **kwargs)
+            else:
+                ret = func(*args, **kwargs)
+            return ret
         return serializedWrapper
 
-    def images(func: Callable[..., Any]) -> Callable[..., Any]:
+    @typechecked
+    def images(func: Callable[..., Any | Coroutine[None, None, Any]]) -> Callable[..., Coroutine[None, None, Any]]:
         @wraps(func)
-        def imagesWrapper(*args: Any, **kwargs: Any) -> Any:
+        @typechecked
+        async def imagesWrapper(*args: Any, **kwargs: Any) -> Any:
             args = tuple(loadImage(arg) if isinstance(arg, Buffer) else arg for arg in args)
-            ret = func(*args, **kwargs)
+            if iscoroutinefunction(func):  # pylint: disable=consider-ternary-expression
+                ret = await func(*args, **kwargs)
+            else:
+                ret = func(*args, **kwargs)
             if isinstance(ret, Image):
                 return imageToBytes(ret)
             if isinstance(ret, Iterable):
@@ -115,12 +145,18 @@ if RUNNING_IN_WORKER:
             return ret
         return imagesWrapper
 
-    def logged(func: Callable[..., Any]) -> Callable[..., Any]:
+    @typechecked
+    def logged(func: Callable[..., Any | Coroutine[None, None, Any]]) -> Callable[..., Coroutine[None, None, Any]]:
         @wraps(func)
-        def loggedWrapper(*args: Any, **kwargs: Any) -> Any:
+        @typechecked
+        async def loggedWrapper(*args: Any, **kwargs: Any) -> Any:
             try:
-                log(f"Calling {func.__name__}(): {args} {kwargs}")
-                ret = func(*args, **kwargs)
+                if iscoroutinefunction(func):
+                    log(f"Awaiting {func.__name__}(): {args} {kwargs}")
+                    ret = await func(*args, **kwargs)
+                else:
+                    log(f"Calling {func.__name__}(): {args} {kwargs}")
+                    ret = func(*args, **kwargs)
                 log(f"Returned from {func.__name__}(): {ret}")
                 return ret  # noqa: TRY300
             except BaseException as ex:
@@ -129,35 +165,39 @@ if RUNNING_IN_WORKER:
         return loggedWrapper
 
     @serialized
-    def connect(data: bytes) -> bytes:  # ToDo: Return list of exported names and add them to module globals() in main thread
+    @typechecked
+    def _connect(data: Buffer) -> tuple[bytes, ...]:
         if data == CONNECT_REQUEST:
             log("Connected to main thread, ready for requests")
-            return CONNECT_RESPONSE
+            assert __export__, __export__
+            return tuple(chain((CONNECT_RESPONSE,), (name.encode() for name in __export__ if name != _connect.__name__)))
         error(f"Connection to main thread is misconfigured, can't continue: {type(data)}({data!r})")
 
     @typechecked
-    def wrap(func: Callable[..., Any]) -> Callable[..., Any]:
+    def wrap(func: Callable[..., Any | Coroutine[None, None, Any]]) -> Callable[..., Coroutine[None, None, Any]]:
         return serialized(images(logged(typechecked(func))))
 
     # Must be called by the importing module to actually start providing worker service
     @typechecked
-    def export(*functions: Callable[..., Any]) -> None:
+    def export(*functions: Callable[..., Any | Coroutine[None, None, Any]]) -> None:
         from sys import _getframe  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
         target = _getframe(1).f_globals  # globals of the calling module
-        target[connect.__name__] = connect
-        exportNames = [connect.__name__,]
+        target[_connect.__name__] = _connect
+        exportNames = [_connect.__name__,]
 
         for func in functions:
             target[func.__name__] = wrap(func)
             exportNames.append(func.__name__)
 
-        target['__export__'] = tuple(exportNames)
-        log(f"Started worker, providing functions: {', '.join(exportNames)}")
+        exportNamesTuple = tuple(exportNames)
+        target['__export__'] = exportNamesTuple  # ToDo: Append, not overwrite
+        globals()['__export__'] = exportNamesTuple  # This is only needed to make `_connect()` code universal for both `export()` and `exportFromMapping()`
+        log(f"Started worker, providing functions: {', '.join(name for name in exportNamesTuple if name != _connect.__name__)}")
 
-    # Gets called automatically if `[exports]` section is found in config
+    # Gets called automatically if this module itself is loaded as a worker
     @typechecked
     def exportFromMapping(mapping: Mapping[str, Iterable[str]] | None) -> None:
-        exportNames = [connect.__name__,]
+        exportNames = [_connect.__name__,]
         target = globals()
 
         if mapping:
@@ -172,31 +212,39 @@ if RUNNING_IN_WORKER:
         else:
             log("WARNING: no functions found to export, check `[exports]` section in the config")
 
-        target['__export__'] = tuple(exportNames)
-        log(f"Started worker, providing functions: {', '.join(exportNames)}")
+        target['__export__'] = tuple(exportNames)  # ToDo: Append, not overwrite
+        log(f"Started worker, providing functions: {', '.join(name for name in exportNames if name != _connect.__name__)}")
 
     if __name__ == '__main__':
+        # If this module itself is used as a worker, it imports modules mentioned in config and exports them automatically
         from pyscript import config  # pylint: disable=ungrouped-imports
         exportFromMapping(config.get('exports'))
+        del config
+        __all__ = ()
     else:
+        # If user is importing this module in a worker, they MUST call `export()` explicitly
         __all__ = (export.__name__,)  # noqa: PLE0604
 
 else:  # Main thread
 
-    from asyncio import run
-
     from pyscript import workers
-
-    PREFIX = "[main]"
 
     try:  # To turn runtime typechecking on, add "beartype" to `packages` array in your `main.toml`
         from beartype import beartype as typechecked  # pylint: disable=ungrouped-imports
     except ImportError:
-        def typechecked(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:  # type: ignore[no-redef]
+        def typechecked(func: Callable[..., Coroutine[None, None, Any]]) -> Callable[..., Coroutine[None, None, Any]]:  # type: ignore[no-redef]
             return func
 
-    def images(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:  # type: ignore[misc]
+    PREFIX = "[main]"
+
+    class Worker:
+        def __init__(self, worker: JsProxy) -> None:
+            self.worker = worker
+
+    @typechecked
+    def images(func: Callable[..., Coroutine[None, None, Any | Coroutine[None, None, Any]]]) -> Callable[..., Coroutine[None, None, Any]]:
         @wraps(func)
+        @typechecked
         async def imagesWrapper(*args: Any, **kwargs: Any) -> Any:
             args = tuple(imageToBytes(arg) if isinstance(arg, Image) else arg for arg in args)
             ret = await func(*args, **kwargs)
@@ -207,26 +255,31 @@ else:  # Main thread
             return ret
         return imagesWrapper
 
-    def serialized(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:  # type: ignore[misc]
+    @typechecked
+    def serialized(func: Callable[..., Coroutine[None, None, Any | Coroutine[None, None, Any]]]) -> Callable[..., Coroutine[None, None, Any]]:
         @wraps(func)
+        @typechecked
         async def serializedWrapper(*args: Any, **kwargs: Any) -> Any:
             return to_py(await func(*args, **kwargs))
         return serializedWrapper
 
-    async def connect(workerName: str) -> Any:
-        print(f'{PREFIX} Looking for worker named "{workerName}"')
-        worker = await workers[workerName]  # pylint: disable=redefined-outer-name
+    @typechecked
+    async def connectWorker(workerName: str) -> Worker:
+        log(f'Looking for worker named "{workerName}"')
+        worker = await workers[workerName]
         log("Got worker, connecting")
-        data = await serialized(worker.connect)(CONNECT_REQUEST)
-        if data == CONNECT_RESPONSE:  # pylint: disable=consider-using-assignment-expr
-            log("Connected to worker")
-            return worker
-        error(f"Connection to worker is misconfigured, can't continue: {type(data)}({data!r})")
+        data = await serialized(worker._connect)(CONNECT_REQUEST)  # noqa: SLF001  # pylint: disable=protected-access
+        if not data or data[0] != CONNECT_RESPONSE:
+            error(f"Connection to worker is misconfigured, can't continue: {type(data)}: {data!r}")
+        ret = Worker(worker)
+        for b in data[1:]:
+            funcName = bytes(b).decode()
+            assert funcName != connectWorker.__name__
+            if not (func := getattr(worker, funcName, None)):
+                error(f"Function {funcName} is not exported from the worker")
+            func = images(serialized(typechecked(func)))
+            setattr(ret, funcName, func)
+        log("Connected to worker")
+        return ret
 
-    # Should be called by the importing module to call a worker function
-    async def workerCall(funcName: str, *args: Any, **kwargs: Any) -> Any:
-        return await images(serialized(typechecked(getattr(worker, funcName))))(*args, **kwargs)
-
-    worker = run(connect('workerlib'))
-
-    __all__ = (workerCall.__name__,)  # noqa: PLE0604
+    __all__ = ('Worker', 'connectWorker')
