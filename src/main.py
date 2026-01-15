@@ -844,7 +844,7 @@ async def main() -> None:
             test()
             raise RuntimeError("Beartype v" + beartypeVersion + " is not operating properly")
         except BeartypeException:
-            log("Beartype v" + beartypeVersion + " is up and watching, remove it from `main.toml` to make things faster")
+            log("Beartype v" + beartypeVersion + " is up and watching, remove it from PyScript configuration to make things faster")
     await repaint()
     await ImageBlock.init()
     hide('log')

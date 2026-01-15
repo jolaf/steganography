@@ -7,3 +7,6 @@ sync_main_only = true
 
 [exports]
 "Steganography" = ["encrypt", "overlay", "processImage", "asyncProcessImage"]
+
+[adapters]
+"Steganography" = ["Image", "imageToBytes", "loadImage"]

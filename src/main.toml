@@ -7,3 +7,6 @@ packages = ["pillow", "numpy", "coolname"] # , "beartype"]
 "./images/key.png" = ""
 "./gettext/en.mo" = "./gettext/en_US/LC_MESSAGES/Steganography.mo"
 "./gettext/ru.mo" = "./gettext/ru_RU/LC_MESSAGES/Steganography.mo"
+
+[adapters]
+"Steganography" = ["Image", "imageToBytes", "loadImage"]
