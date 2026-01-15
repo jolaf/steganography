@@ -51,9 +51,10 @@
 from collections.abc import Coroutine, Buffer, Callable, Iterable, Mapping, Sequence
 from functools import wraps
 from importlib import import_module
-from inspect import isfunction, iscoroutinefunction
+from inspect import isfunction, iscoroutinefunction, signature
 from itertools import chain
-from typing import Any, NoReturn
+from sys import _getframe
+from typing import Any, Final, NoReturn
 
 from pyscript import config, RUNNING_IN_WORKER
 
@@ -66,6 +67,7 @@ except ImportError:
 type _Coroutine = Coroutine[None, None, Any]
 type _CoroutineFunction = Callable[..., _Coroutine]
 type _FunctionOrCoroutine = Callable[..., Any | _Coroutine]
+type _Adapter = tuple[type, Callable[[Any], Any | _Coroutine], Callable[[Any], Any | _Coroutine]]
 _TransportSafe = int | float | bool | str | Buffer | Iterable | Sequence | Mapping | None  # type: ignore[type-arg]
 
 try:  # To turn runtime typechecking on, add "beartype" to `packages` array in your `workerlib.toml`
@@ -74,14 +76,17 @@ except ImportError:
     def _typechecked(func: _FunctionOrCoroutine) -> _FunctionOrCoroutine:  # type: ignore[no-redef]
         return func
 
-type _Adapter = tuple[type, Callable[[Any], Any | _Coroutine], Callable[[Any], Any | _Coroutine]]
+_PREFIX = ''
 
-_PREFIX = ""
+_CONNECT_REQUEST: Final[str] = '__REQUEST__'
+_CONNECT_RESPONSE: Final[str] = '__RESPONSE__'
 
-_CONNECT_REQUEST = b'__REQUEST__'
-_CONNECT_RESPONSE = b'__RESPONSE__'
+_ADAPTER_PREFIX: Final[str] = '_workerlib_'
 
-_ADAPTER_PREFIX = '_workerlib_'
+__EXPORT__: Final[str] = '__export__'
+
+_ADAPTERS_SECTION: Final[str] = 'adapters'
+_EXPORTS_SECTION: Final[str] = 'exports'
 
 __all__: Sequence[str]
 __export__: Sequence[str]
@@ -96,9 +101,34 @@ def _error(message: str) -> NoReturn:
     raise RuntimeError(f"{_PREFIX} {message}")
 
 @_typechecked
+def _adaptersFrom(mapping: Mapping[str, Sequence[str]] | None) -> None:
+    if not mapping:
+        return
+    ret: list[_Adapter] = []
+    for (moduleName, names) in mapping.items():
+        if len(names) != 3:
+            _error(f"""Bad adapter settings for module {moduleName}, must be '["className", "encoderFunction", "decoderFunction"]', got {names!r}""")
+        _log(f"Importing from module {moduleName}: {', '.join(names)}")
+        module = import_module(moduleName)
+        (cls, encoder, decoder) = (getattr(module, name) for name in names)
+        if not isinstance(cls, type):
+            _error(f"Bad adapter class {names[0]} for module {moduleName}, must be type, got {type(cls)}")
+        if not isfunction(encoder) and not iscoroutinefunction(encoder):
+            _error(f"Bad adapter encoder {names[1]} for module {moduleName}, must be function or coroutine, got {type(encoder)}")
+        if not isfunction(decoder) and not iscoroutinefunction(decoder):
+            _error(f"Bad adapter encoder {names[2]} for module {moduleName}, must be function or coroutine, got {type(decoder)}")
+        ret.append((cls, encoder, decoder))
+    global __adapters__  # noqa: PLW0603  # pylint: disable=global-statement
+    __adapters__ = tuple(ret)
+
+@_typechecked
 async def _from_py(obj: Any) -> Any:
-    if encoded := await _adapterEncode(obj):
-        return encoded
+    for (cls, encoder, _decoder) in __adapters__:
+        if isinstance(obj, cls):
+            value = await encoder(obj) if iscoroutinefunction(encoder) else encoder(obj)
+            return (_ADAPTER_PREFIX + cls.__name__, value)  # Encoded class name is NOT the name of type of object being encoded, but name of the adapter to use to decode the object on the other side
+    if not isinstance(obj, _TransportSafe):
+        _error(f"No adapter found for class {type(obj)}, and transport layer (JavaScript structured clone) would not accept it as is, see https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm")
     if isinstance(obj, str | Buffer):
         return obj
     if isinstance(obj, Mapping):
@@ -115,44 +145,6 @@ async def _to_py(obj: Any) -> Any:
         obj = {await _to_py(k): await _to_py(v) for (k, v) in obj.items()}
     elif not isinstance(obj, str | Buffer) and isinstance(obj, Iterable):
         obj = tuple([await _to_py(v) for v in obj])  # pylint: disable=consider-using-generator
-    return await _adapterDecode(obj)
-
-@_typechecked
-def _adaptersFrom(mapping: Mapping[str, Sequence[str]] | None) -> None:
-    if not mapping:
-        return
-    ret: list[_Adapter] = []
-    for (moduleName, names) in mapping.items():
-        if len(names) != 3:
-            _error(f'''Bad adapter settings for module {moduleName}, must be '["className", "encoderFunction", "decoderFunction"]', got {names!r} ''')
-        _log(f"Importing from module {moduleName}: {', '.join(names)}")
-        module = import_module(moduleName)
-        (cls, encoder, decoder) = (getattr(module, name) for name in names)
-        if not isinstance(cls, type):
-            _error(f"Bad adapter class {names[0]} for module {moduleName}, must be type, got {type(cls)}")
-        if not isfunction(encoder) and not iscoroutinefunction(encoder):
-            _error(f"Bad adapter encoder {names[1]} for module {moduleName}, must be function or coroutine, got {type(encoder)}")
-        if not isfunction(decoder) and not iscoroutinefunction(decoder):
-            _error(f"Bad adapter encoder {names[2]} for module {moduleName}, must be function or coroutine, got {type(decoder)}")
-        ret.append((cls, encoder, decoder))
-    global __adapters__  # noqa: PLW0603  # pylint: disable=global-statement
-    __adapters__ = tuple(ret)
-
-@_typechecked
-async def _adapterEncode(obj: Any) -> tuple[str, Any] | None:
-    for (cls, encoder, _decoder) in __adapters__:
-        if isinstance(obj, cls):
-            if iscoroutinefunction(encoder):
-                value = await encoder(obj)
-            else:
-                value = encoder(obj)
-            return (_ADAPTER_PREFIX + cls.__name__, value)  # Encoded class name is NOT the name of type of object being encoded, but name of the adapter to use to decode the object on the other side
-    if not isinstance(obj, _TransportSafe):
-        _error(f"No adapter found for class {type(obj)}, and transport layer (JavaScript structured clone) would not accept it as is, see https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm")
-    return None
-
-@_typechecked
-async def _adapterDecode(obj: Any) -> Any:
     if not isinstance(obj, tuple) or len(obj) != 2:
         return obj
     (name, value) = obj
@@ -164,26 +156,18 @@ async def _adapterDecode(obj: Any) -> Any:
     className = tokens[1]
     for (cls, _encoder, decoder) in __adapters__:
         if className == cls.__name__:
-            if iscoroutinefunction(decoder):
-                return await decoder(value)
-            return decoder(value)
+            return await decoder(value) if iscoroutinefunction(decoder) else decoder(value)
     _error(f"No adapter found to decode class {className}")
 
-@_typechecked
-async def _to_transport(obj: Any) -> Any:
-    return await _from_py(obj)
-
-@_typechecked
-async def _from_transport(obj: Any) -> Any:
-    return await _to_py(obj)
-
-if RUNNING_IN_WORKER:
+                       ##
+if RUNNING_IN_WORKER:  ##
+                       ##
 
     _PREFIX = "[worker]"
 
     _log("Starting worker")
 
-    try:  # To turn runtime typechecking on, add "beartype" to `packages` array in your `workerlib.toml`
+    try:
         from beartype import __version__ as _version
         _log(f"Beartype v{_version} is up and watching, remove it from worker configuration to make things faster")
     except ImportError:
@@ -194,20 +178,19 @@ if RUNNING_IN_WORKER:
         @wraps(func)
         @_typechecked
         async def workerSerializedWrapper(*args: Any, **kwargs: Any) -> Any:
-            assert not kwargs  # kwargs get passed to workers as last of args, of type dict
-            args = await _from_transport(args)
-            if args and isinstance(args[-1], dict):
+            assert not kwargs  # kwargs get passed to workers as last of args, of type `dict`
+            args = await _to_py(args)
+            if any(param.kind in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY, param.VAR_KEYWORD)
+                        for param in signature(func).parameters.values()) \
+                    and args and isinstance(args[-1], dict):  # If `func` accepts keyword arguments, extract them from last of `args`
                 kwargs = args[-1]
                 args = args[:-1]
-            if iscoroutinefunction(func):  # pylint: disable=consider-ternary-expression
-                ret = await func(*args, **kwargs)
-            else:
-                ret = func(*args, **kwargs)
-            return await _to_transport(ret)
+            ret = await func(*args, **kwargs) if iscoroutinefunction(func) else func(*args, **kwargs)
+            return await _from_py(ret)
         return workerSerializedWrapper
 
     @_typechecked
-    def _logged(func: _FunctionOrCoroutine) -> _CoroutineFunction:
+    def _workerLogged(func: _FunctionOrCoroutine) -> _CoroutineFunction:
         @wraps(func)
         @_typechecked
         async def workerLoggedWrapper(*args: Any, **kwargs: Any) -> Any:
@@ -225,36 +208,35 @@ if RUNNING_IN_WORKER:
                 raise
         return workerLoggedWrapper
 
+    @_typechecked
+    def _wrap(func: _FunctionOrCoroutine) -> _CoroutineFunction:
+        return _workerSerialized(_workerLogged(_typechecked(func)))
+
     @_workerSerialized
     @_typechecked
-    def _connectFromMain(data: Buffer) -> tuple[bytes, ...]:
+    def _connectFromMain(data: str) -> tuple[str, ...]:
         if data == _CONNECT_REQUEST:
             _log("Connected to main thread, ready for requests")
             assert __export__, __export__
-            return tuple(chain((_CONNECT_RESPONSE,), (name.encode() for name in __export__ if name != _connectFromMain.__name__)))
+            return tuple(chain((_CONNECT_RESPONSE,), (name for name in __export__ if name != _connectFromMain.__name__)))
         _error(f"Connection to main thread is misconfigured, can't continue: {type(data)}({data!r})")
-
-    @_typechecked
-    def _wrap(func: _FunctionOrCoroutine) -> _CoroutineFunction:
-        return _workerSerialized(_logged(_typechecked(func)))
 
     # Must be called by the importing module to actually start providing worker service
     @_typechecked
     def export(*functions: _FunctionOrCoroutine) -> None:
-        from sys import _getframe  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
         target = _getframe(1).f_globals  # globals of the calling module
         target[_connectFromMain.__name__] = _connectFromMain
         exportNames: list[str] = []
-        if _connectFromMain.__name__ not in target.get('__export__', ()):
+        if _connectFromMain.__name__ not in target.get(__EXPORT__, ()):
             exportNames.append(_connectFromMain.__name__)
 
         for func in functions:
             target[func.__name__] = _wrap(func)
             exportNames.append(func.__name__)
 
-        exportNamesTuple = tuple(chain(target.get('__export__', ()), exportNames))
-        target['__export__'] = exportNamesTuple
-        globals()['__export__'] = exportNamesTuple  # This is only needed to make `_connectFromMain()` code universal for both `export()` and `_exportFrom()`
+        exportNamesTuple = tuple(chain(target.get(__EXPORT__, ()), exportNames))
+        target[__EXPORT__] = exportNamesTuple
+        globals()[__EXPORT__] = exportNamesTuple  # This is only needed to make `_connectFromMain()` code universal for both `export()` and `_exportFrom()`
         _log(f"Started worker, providing functions: {', '.join(name for name in exportNamesTuple if name != _connectFromMain.__name__)}")
 
     # Gets called automatically if this module itself is loaded as a worker
@@ -274,26 +256,26 @@ if RUNNING_IN_WORKER:
         else:
             _log("WARNING: no functions found to export, check `[exports]` section in the config")
 
-        target['__export__'] = tuple(exportNames)
+        target[__EXPORT__] = tuple(exportNames)
         _log(f"Started worker, providing functions: {', '.join(name for name in exportNames if name != _connectFromMain.__name__)}")
+
+    _adaptersFrom(config.get(_ADAPTERS_SECTION))
 
     if __name__ == '__main__':
         # If this module itself is used as a worker, it imports modules mentioned in config and exports them automatically
         __export__ = ()
-        _exportFrom(config.get('exports'))
-        _adaptersFrom(config.get('adapters'))
+        _exportFrom(config.get(_EXPORTS_SECTION))
         assert __export__, __export__
         del export  # type: ignore[unreachable]
         __all__ = ()
     else:
         # If user is importing this module in a worker, they MUST call `export()` explicitly
-        __all__ = (export.__name__,)  # noqa: PLE0604
-        _adaptersFrom(config.get('adapters'))
         del __export__
         del _exportFrom
+        __all__ = (export.__name__,)  # noqa: PLE0604
 
        ##
-else:  #  MAIN THREAD
+else:  ##  MAIN THREAD
        ##
 
     from pyscript import workers  # pylint: disable=ungrouped-imports
@@ -306,17 +288,17 @@ else:  #  MAIN THREAD
             self.worker = worker
 
     @_typechecked
-    def mainSerialized(func: _CoroutineFunction) -> _CoroutineFunction:
+    def _mainSerialized(func: _CoroutineFunction) -> _CoroutineFunction:
         @wraps(func)
         @_typechecked
         async def mainSerializedWrapper(*args: Any, **kwargs: Any) -> Any:
-            args = await _to_transport(args)
-            assert isinstance(args, tuple), type(args)
-            kwargs = await _to_transport(kwargs)
-            assert isinstance(kwargs, dict), type(kwargs)
             assert isinstance(func, JsProxy), type(func)
-            ret = await func(*args, **kwargs)  # type: ignore[unreachable]
-            return await _from_transport(ret)
+            args = await _from_py(args)  # type: ignore[unreachable]
+            assert isinstance(args, tuple), type(args)
+            kwargs = await _from_py(kwargs)
+            assert isinstance(kwargs, dict), type(kwargs)
+            ret = await func(*args, **kwargs)
+            return await _to_py(ret)
         return mainSerializedWrapper
 
     @_typechecked
@@ -324,19 +306,18 @@ else:  #  MAIN THREAD
         _log(f'Looking for worker named "{workerName}"')
         worker = await workers[workerName]
         _log("Got worker, connecting")
-        data = await (mainSerialized(worker._connectFromMain)(_CONNECT_REQUEST))  # noqa: SLF001  # pylint: disable=protected-access
+        data = await _mainSerialized(worker._connectFromMain)(_CONNECT_REQUEST)  # noqa: SLF001  # pylint: disable=protected-access
         if not data or data[0] != _CONNECT_RESPONSE:
             _error(f"Connection to worker is misconfigured, can't continue: {type(data)}: {data!r}")
         ret = Worker(worker)  # We can't return `worker`, as it is a `JsProxy` and we can't reassign its fields, `setattr()` is not working, so we have to create a class of our own to store `wrap()`ped functions.
-        for b in data[1:]:
-            funcName = bytes(b).decode()  # We can't get a list of exported functions from `worker` object to `wrap()` them, so we have to pass it over in our own way.
+        for funcName in data[1:]:  # We can't get a list of exported functions from `worker` object to `wrap()` them, so we have to pass it over in our own way.
             assert funcName != connectToWorker.__name__
             if not (func := getattr(worker, funcName, None)):
                 _error(f"Function {funcName} is not exported from the worker")
-            setattr(ret, funcName, mainSerialized(func))
+            setattr(ret, funcName, _mainSerialized(func))
         _log("Connected to worker")
         return ret
 
-    assert not hasattr(globals(), '__export__'), getattr(globals(), '__export__')  # noqa: B009
-    _adaptersFrom(config.get('adapters'))
-    __all__ = ('Worker', 'connectToWorker')
+    assert not hasattr(globals(), __EXPORT__), getattr(globals(), __EXPORT__)
+    _adaptersFrom(config.get(_ADAPTERS_SECTION))
+    __all__ = (Worker.__name__, connectToWorker.__name__)  # noqa: PLE0604
