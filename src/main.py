@@ -95,7 +95,7 @@ except ImportError:
 from numpy import __version__ as numpyVersion
 from PIL import __version__ as pilVersion
 
-from workerlib import connectWorker, Worker
+from workerlib import connectToWorker, Worker
 
 from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, Image
 
@@ -501,7 +501,7 @@ class ImageBlock:
             cls.ImageBlocks[stage] = ImageBlock(stage)
         for (stage, block) in cls.ImageBlocks.items():
             block.source = cls.ImageBlocks.get(cls.SOURCES.get(stage))  # type: ignore[arg-type]
-        cls.worker = await connectWorker('workerlib')
+        cls.worker = await connectToWorker('workerlib')
 
     @classmethod
     async def loadImages(cls) -> None:

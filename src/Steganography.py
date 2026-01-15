@@ -157,7 +157,7 @@ def finalizeImage(image: Image) -> None:
 @typechecked
 async def asyncProcessImage(image: Image,
                  *,
-                 resizeFactor: float | int | None = None,  # noqa: PYI041  # bug in beartype requires it
+                 resizeFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
                  resizeWidth: int | None = None,
                  resizeHeight: int | None = None,
                  randomRotate: bool | None = None,
