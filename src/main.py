@@ -19,7 +19,7 @@ import sys
 from sys import version as pythonVersion
 from traceback import extract_tb
 from types import TracebackType  # noqa: TC003
-from typing import cast, Any, ClassVar
+from typing import cast, Any, ClassVar, Final
 
 try:
     from beartype import beartype as typechecked, __version__ as beartypeVersion
@@ -102,8 +102,25 @@ from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, load
 TagAttrValue = str | int | float | bool
 
 # Tag names
+A = 'A'
+BUTTON = 'BUTTON'
+DIV = 'DIV'
+HTML = 'HTML'
 INPUT = 'INPUT'
+META = 'META'
 SELECT = 'SELECT'
+
+# Attribute names
+AUTOCOMPLETE = 'autocomplete'
+CHECKED = 'checked'
+CONTENT = 'content'
+INPUTMODE = 'inputmode'
+LANG = 'lang'
+MAXLENGTH = 'maxlength'
+PATTERN = 'pattern'
+PLACEHOLDER = 'placeholder'
+TITLE = 'title'
+VALUE = 'value'
 
 # <INPUT> types
 TEXT = 'text'  # Also is used as a shortcut for innerText attribute
@@ -194,9 +211,9 @@ def resetInput(element: str | Element) -> None:
     if element.tagName != INPUT:
         return
     if element.type == CHECKBOX:
-        element.checked = (getAttr(element, 'checked') == 'true')  # pylint: disable=superfluous-parens
+        element.checked = (getAttr(element, CHECKED) == 'true')  # pylint: disable=superfluous-parens
     else:
-        element.value = getAttr(element, 'value')
+        element.value = getAttr(element, VALUE)
     #dispatchEvent(element, CHANGE)  # We don't do it to avoid running pipeline multiple times when resetting all options
 
 @typechecked
@@ -214,45 +231,47 @@ def iterTextNodes(root: Element | None = None) -> Iterator[Node]:
 
 @typechecked
 class Options(Storage):
-    UNSET: ClassVar[str] = '-'
+    UNSET: Final[str] = '-'
 
-    TYPE_DEFAULTS: ClassVar[Mapping[type[TagAttrValue], TagAttrValue]] = {
+    TYPE_DEFAULTS: Final[Mapping[type[TagAttrValue], TagAttrValue]] = {
         int: 0,
         float: 1.0,
     }
 
-    TAG_ATTRIBUTES: ClassVar[Mapping[type[TagAttrValue], Mapping[str, TagAttrValue]]] = {
+    TAG_ATTRIBUTES: Final[Mapping[type[TagAttrValue], Mapping[str, TagAttrValue]]] = {  # pylint: disable=consider-using-namedtuple-or-dataclass
         int: {
-            'inputmode': 'numeric',
-            'maxlength': 4,
-            'title': "integer",
-            'placeholder': "0000",
-            'pattern': r'\s*(-|[0-9]+)?\s*',
+            INPUTMODE: 'numeric',
+            MAXLENGTH: 4,
+            TITLE: "integer",
+            PLACEHOLDER: "0000",
+            PATTERN: r'\s*(-|[0-9]+)?\s*',
         },
         float: {
-            'inputmode': 'decimal',
-            'maxlength': 4,
-            'title': "float",
-            'placeholder': "0.00",
-            'pattern': r'\s*(-|\.[0-9]{1,2}|[0-9]+\.[0-9]{1,2}|[0-9]+\.?)?\s*',
+            INPUTMODE: 'decimal',
+            MAXLENGTH: 4,
+            TITLE: "float",
+            PLACEHOLDER: "0.00",
+            PATTERN: r'\s*(-|\.[0-9]{1,2}|[0-9]+\.[0-9]{1,2}|[0-9]+\.?)?\s*',
         },
     }
 
-    TRANSLATABLE_TAG_ATTRS: ClassVar[Mapping[str, Iterable[str]]] = {
-        'HTML'  : ('lang',),
-        'META'  : ('content',),
-        'A'     : ('title',),
-        'BUTTON': ('title',),
-        'DIV'   : ('title',),
-         INPUT  : ('title', 'placeholder',),
+    TEXT_NODE_ROOTS: Final[str] = 'title, #title, #subtitle, #options, button, .image-title, #footer'
+
+    TRANSLATABLE_TAG_ATTRS: Final[Mapping[str, Iterable[str]]] = {
+        HTML   : (LANG,),
+        META   : (CONTENT,),
+        A      : (TITLE,),
+        BUTTON : (TITLE,),
+        DIV    : (TITLE,),
+        INPUT  : (TITLE, PLACEHOLDER),
     }
 
-    LANGUAGES: ClassVar[Mapping[str, str]] = {
+    LANGUAGES: Final[Mapping[str, str]] = {
         'en_US': "English",
         'ru_RU': "Русский",
     }
 
-    TRANSLATIONS: ClassVar[Mapping[str, GNUTranslations]] = {language: translation('Steganography', './gettext/', (language,)) for language in LANGUAGES}
+    TRANSLATIONS: Final[Mapping[str, GNUTranslations]] = {language: translation('Steganography', './gettext/', (language,)) for language in LANGUAGES}
 
     @staticmethod
     def translateString(s: str | None) -> str | None:
@@ -276,7 +295,7 @@ class Options(Storage):
         log("Language set to", cls.LANGUAGES[language])
 
         for textNode in chain[Text].from_iterable(iterTextNodes(root)
-                for root in page['title, #title, #subtitle, #options, button, .image-title, #footer']):
+                for root in page[cls.TEXT_NODE_ROOTS]):
             if translated := cls.translateString(textNode.nodeValue):
                 textNode.nodeValue = translated
 
@@ -347,18 +366,18 @@ class Options(Storage):
                 setAttr(element, attr, attrValue)  # Set <INPUT> element attributes according to valueType
             if name == 'taskName':  # <INPUT type="text">
                 exclude = r'''\/:\\?*'<">&\|'''
-                setAttr(element, 'pattern', rf'[^{exclude}]+')
+                setAttr(element, PATTERN, rf'[^{exclude}]+')
                 for (f, t) in {r'\/': '/', r'\|': '|', r'\\': '\\'}.items():
                     exclude = exclude.replace(f, t)
                 title = fr"Do not use {exclude}"  # HTML: "Do not use /:\?*'&lt;&quot;&gt;&amp;|"
-                setAttr(element, 'title', title)
-                setAttr(element, 'placeholder', title)
-                setAttr(element, 'maxlength', 40)
-                setAttr(element, 'autocomplete', 'on')
+                setAttr(element, TITLE, title)
+                setAttr(element, PLACEHOLDER, title)
+                setAttr(element, MAXLENGTH, 40)
+                setAttr(element, AUTOCOMPLETE, 'on')
                 if not value:
                     value = getDefaultTaskName()
                     self[name] = value
-        setAttr(element, 'checked' if valueType is bool else 'value', defaultValue)
+        setAttr(element, CHECKED if valueType is bool else VALUE, defaultValue)
         if valueType is bool:
             element.checked = value
         elif valueType in (int, float):
@@ -461,11 +480,11 @@ class Stage(Enum):
 
 @typechecked
 class ImageBlock:
-    ID_PREFIX: ClassVar[str] = 'image-'
-    TEMPLATE_PREFIX: ClassVar[str] = 'template-'
-    REMOVED: ClassVar[bytes] = b'__REMOVED__'
+    ID_PREFIX: Final[str] = 'image-'
+    TEMPLATE_PREFIX: Final[str] = 'template-'
+    REMOVED: Final[bytes] = b'__REMOVED__'
 
-    BLOCK_NAMES: ClassVar[Mapping[Stage, str]] = dict(zip(Stage, (
+    BLOCK_NAMES: Final[Mapping[Stage, str]] = dict(zip(Stage, (
         _("Source image"),
         _("Lock mask"),
         _("Key mask"),
@@ -477,18 +496,18 @@ class ImageBlock:
         _("Overlay test"),
     ), strict = True))
 
-    SOURCES: ClassVar[Mapping[Stage, Stage]] = {
+    SOURCES: Final[Mapping[Stage, Stage]] = {
         Stage.PROCESSED_SOURCE: Stage.SOURCE,
         Stage.PROCESSED_LOCK: Stage.LOCK,
         Stage.PROCESSED_KEY: Stage.KEY,
     }
 
-    PRELOADED_FILES: ClassVar[Mapping[Stage, str]] = {
+    PRELOADED_FILES: Final[Mapping[Stage, str]] = {
         Stage.LOCK: './lock.png',
         Stage.KEY: './key.png',
     }
 
-    ImageBlocks: ClassVar[dict[Stage, ImageBlock]] = {}
+    ImageBlocks: Final[dict[Stage, ImageBlock]] = {}
 
     options: ClassVar[Options | None] = None
     worker: ClassVar[Worker | None] = None
@@ -612,7 +631,7 @@ class ImageBlock:
                     break
 
         # Further configure children
-        self.setAttr('title', TEXT, _(self.BLOCK_NAMES[self.stage]))
+        self.setAttr(TITLE, TEXT, _(self.BLOCK_NAMES[self.stage]))
         downloadLink = self.getElement('download-link')
 
         @when(CLICK, self.getElement('download'))
@@ -848,7 +867,7 @@ async def main() -> None:
     await repaint()
     await ImageBlock.init()
     hide('log')
-    show('content')
+    show(CONTENT)
     log("Loading cached images")
     await ImageBlock.loadImages()
     await ImageBlock.pipeline()
