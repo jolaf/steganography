@@ -5,13 +5,13 @@ from __future__ import annotations
 PREFIX = "[main]"
 print(f"{PREFIX} Loading app")
 
-from asyncio import create_task, gather, get_running_loop, sleep, to_thread, AbstractEventLoop
-from collections.abc import Awaitable, Buffer, Callable, Iterable, Iterator, Mapping, Sequence  # noqa: TC003  # beartype needs these things in runtime
+from asyncio import create_task, get_running_loop, sleep, to_thread, AbstractEventLoop
+from collections.abc import Awaitable, Buffer, Callable, Iterable, Iterator, Mapping, Sequence  # beartype needs these things in runtime
 from contextlib import suppress
 from datetime import datetime
 from enum import Enum
 from gettext import translation, GNUTranslations
-from inspect import iscoroutinefunction
+from inspect import iscoroutinefunction, signature
 from itertools import chain
 from pathlib import Path
 from re import findall, match
@@ -98,6 +98,7 @@ from PIL import __version__ as pilVersion
 from workerlib import connectToWorker, Worker
 
 from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, Image
+from Steganography import encrypt, overlay, processImage  # For extracting options only
 
 TagAttrValue = str | int | float | bool
 
@@ -447,6 +448,15 @@ class Options(Storage):
             del self[f'file-{name}-fileName']
         await self.sync()
 
+    def fillOptions(self, options: Iterable[str] | None) -> Mapping[str, Any]:
+        if not options:
+            return {}
+        ret: dict[str, Any] = {}
+        for option in options:
+            if (value := self.get(option)) and value != super().__getattribute__(option):  # ToDo: Maybe instead of this hack we should have proper Option class, encapsulating type, default value, actual value and Element reference
+                ret[option] = value  # Only fill options with non-default values
+        return ret
+
     def __getattribute__(self, name: str) -> Any:
         defaultValue = super().__getattribute__(name)
         if not isinstance(defaultValue, TagAttrValue):
@@ -507,31 +517,38 @@ class ImageBlock:
         Stage.KEY: './key.png',
     }
 
-    ImageBlocks: Final[dict[Stage, ImageBlock]] = {}
+    PROCESS_OPTIONS: ClassVar[Mapping[Callable[..., Any], Sequence[str]]] = {}
+
+    imageBlocks: Final[dict[Stage, ImageBlock]] = {}
 
     options: ClassVar[Options | None] = None
     worker: ClassVar[Worker | None] = None
 
     @classmethod
+    def extractOptions(cls, func: Callable[..., Any]) -> Sequence[str]:
+        return tuple(name for (name, param) in signature(func).parameters.items() if param.kind == param.KEYWORD_ONLY)
+
+    @classmethod
     async def init(cls) -> None:
         assert cls.options is None, type(cls.options)  # This method should only be called once
         cls.options = cast(Options, await storage('steganography', storage_class = Options))
+        cls.PROCESS_OPTIONS = {func: cls.extractOptions(func) for func in (processImage, encrypt, overlay)}
         for stage in Stage:
-            cls.ImageBlocks[stage] = ImageBlock(stage)
-        for (stage, block) in cls.ImageBlocks.items():
-            block.source = cls.ImageBlocks.get(cls.SOURCES.get(stage))  # type: ignore[arg-type]
+            cls.imageBlocks[stage] = ImageBlock(stage)
+        for (stage, block) in cls.imageBlocks.items():
+            block.source = cls.imageBlocks.get(cls.SOURCES.get(stage))  # type: ignore[arg-type]
         cls.worker = await connectToWorker('workerlib')
 
     @classmethod
     async def loadImages(cls) -> None:
-        for block in cls.ImageBlocks.values():
+        for block in cls.imageBlocks.values():
             if block.isUpload:
                 await block.loadImageFromCache()
 
     @classmethod
     async def resetUploads(cls) -> None:
         for stage in cls.PRELOADED_FILES:
-            await cls.ImageBlocks[stage].resetUpload()
+            await cls.imageBlocks[stage].resetUpload()
         await cls.pipeline()
 
     @classmethod
@@ -541,15 +558,15 @@ class ImageBlock:
                       sourceStages: Stage | Iterable[Stage],
                       optionalSourceStages: Stage | Iterable[Stage] | None = None,
                       *,
-                      options: Iterable[str] | None = None) -> None:
-        sources = tuple(cls.ImageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
-        targets = tuple(cls.ImageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
+                      options: Iterable[str] | Mapping[str, Any] = ()) -> None:
+        sources = tuple(cls.imageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
+        targets = tuple(cls.imageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         if any(not source.image for source in sources):
             for t in targets:
                 await t.removeImage()  # ToDo: Make sure images further down the chain get removed too
             await repaint()
             return
-        optionalSources = tuple(cls.ImageBlocks[stage] for stage in ((optionalSourceStages,) if isinstance(optionalSourceStages, Stage) else optionalSourceStages or ()))
+        optionalSources = tuple(cls.imageBlocks[stage] for stage in ((optionalSourceStages,) if isinstance(optionalSourceStages, Stage) else optionalSourceStages or ()))
         if not any(source.dirty for source in chain(sources, optionalSources)):
             return
         log(f"Processing {', '.join(source.stage.name for source in chain(sources, optionalSources))} => {', '.join(target.stage.name for target in targets)}")
@@ -557,9 +574,10 @@ class ImageBlock:
             t.startOperation(_("Processing image"))
         await repaint()
         try:
-            assert cls.options is not None
             sourceImages = tuple(source.image for source in chain(sources, optionalSources))
-            options = {option: value for (option, value) in ((option, cls.options.get(option)) for option in (options or ())) if value}  # ToDo: Add method to Options to filter default values
+            if not isinstance(options, Mapping):
+                assert cls.options
+                options = cls.options.fillOptions(options)
             if iscoroutinefunction(processFunction) or isinstance(processFunction, JsProxy):  # pylint: disable=consider-ternary-expression
                 ret = await processFunction(*sourceImages, **options)
             else:
@@ -585,23 +603,29 @@ class ImageBlock:
     async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
         log("Started pipeline")
         assert cls.worker
-        await gather(
-            cls.process(Stage.PROCESSED_SOURCE,
-                        cls.worker.processImage, Stage.SOURCE,  # type: ignore[attr-defined]
-                        options = ('resizeFactor', 'resizeWidth', 'resizeHeight', 'randomRotate', 'dither')),
-            cls.process(Stage.PROCESSED_LOCK,
-                        cls.worker.processImage, Stage.LOCK),  # type: ignore[attr-defined]
-            cls.process(Stage.PROCESSED_KEY,
-                        cls.worker.processImage, Stage.KEY),  # type: ignore[attr-defined]
-        )
-        await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
-                          cls.worker.encrypt, Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),  # type: ignore[attr-defined]
-                          options = ('smooth',))
-        await cls.process(Stage.KEY_OVER_LOCK_TEST,
-                          cls.worker.overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),  # type: ignore[attr-defined]
-                          options = ('border',))  # ToDo: Somehow handle random rotation and location
-        # ToDo: Do better job on passing options
-        for imageBlock in cls.ImageBlocks.values():
+        await cls.process(Stage.PROCESSED_SOURCE,
+                              cls.worker.processImage, Stage.SOURCE,  # type: ignore[attr-defined]
+                              options = cls.PROCESS_OPTIONS[processImage])
+        if processedSource := cls.imageBlocks[Stage.PROCESSED_SOURCE].image:
+            await cls.process(Stage.PROCESSED_LOCK,
+                              cls.worker.processImage, Stage.LOCK,  # type: ignore[attr-defined]
+                              options = {'pad': True,
+                                         'resizeWidth':  processedSource.width,  # ToDo: processedSource and processedSource.width ??
+                                         'resizeHeight': processedSource.height,
+                                         'dither': None})
+            await cls.process(Stage.PROCESSED_KEY,
+                              cls.worker.processImage, Stage.KEY,  # type: ignore[attr-defined]
+                              options = {'pad': True,
+                                         'resizeWidth':  processedSource.width,
+                                         'resizeHeight': processedSource.height,
+                                         'dither': None})
+            await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
+                              cls.worker.encrypt, Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),  # type: ignore[attr-defined]
+                              options = cls.PROCESS_OPTIONS[encrypt])
+            await cls.process(Stage.KEY_OVER_LOCK_TEST,
+                              cls.worker.overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),  # type: ignore[attr-defined]
+                              options = cls.PROCESS_OPTIONS[overlay])  # ToDo: Somehow handle random rotation and location
+        for imageBlock in cls.imageBlocks.values():
             imageBlock.dirty = False
         log("Completed pipeline")
 
@@ -866,7 +890,7 @@ async def main() -> None:
             log("Beartype v" + beartypeVersion + " is up and watching, remove it from PyScript configuration to make things faster")
     try:
         assert False  # noqa: B011, PT015
-        log("Assertions are disabled")  # type: ignore[unreachable]
+        log("Assertions are DISABLED")  # type: ignore[unreachable]
     except AssertionError:
         log("Assertions are enabled")
     await repaint()

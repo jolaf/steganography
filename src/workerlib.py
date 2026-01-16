@@ -176,7 +176,7 @@ if RUNNING_IN_WORKER:  ##
 
     try:
         assert False  # noqa: B011, PT015
-        _log("Assertions are disabled")  # type: ignore[unreachable]
+        _log("Assertions are DISABLED")  # type: ignore[unreachable]
     except AssertionError:
         _log("Assertions are enabled")
 

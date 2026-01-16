@@ -14,8 +14,9 @@ from sys import argv, exit as sysExit, stderr
 from typing import cast, Any, ClassVar, Final, IO, Literal
 
 try:
-    from PIL.Image import fromarray as ImageFromArray, open as imageOpen, Dither, Image, Resampling
+    from PIL.Image import fromarray as ImageFromArray, new as imageNew, open as imageOpen, Dither, Image, Resampling, Transpose
     from PIL.ImageMode import getmode as imageGetMode
+    from PIL.ImageOps import pad as imagePad, scale as imageScale
     from PIL._typing import StrOrBytesPath
 except ImportError as ex:
     raise ImportError(f"{type(ex).__name__}: {ex}\n\nThis module requires Pillow, please install v11.3 or later: https://pypi.org/project/pillow/\n") from ex
@@ -62,6 +63,8 @@ MAPPING_MODE_PARAMETERS: Final[Sequence[Mapping[str, str | int]]] = (
     { '2': 16, '4': 32 },
 )
 
+RESAMPLING = Resampling.LANCZOS
+
 N: Final[int] = 2 * 2  # Size of "unit" pixel block to operate on
 type Bit = Literal[0, 1]
 BitsN = tuple[Bit, Bit, Bit, Bit]  # Superclass for BitBlock
@@ -86,7 +89,7 @@ class BitBlock(BitsN):
     blockMap: ClassVar[Mapping[int, Sequence[ArrayMap]]] = {}  # Fully coordinated map of blocks for image processing
 
     def n(self) -> int:
-        return self.count(1)
+        return self.count(0)
 
     def toArray(self) -> Array:
         return np.array((self[:2], self[2:]), bool)
@@ -112,7 +115,7 @@ class BitBlock(BitsN):
 
             def filterByOverlay(block: BitBlock, blocks: Iterable[BitBlock], n: int) -> Iterable[BitBlock]:
                 def overlayBits(a: BitBlock, b: BitBlock) -> BitBlock:  # Simulates overlaying two blocks
-                    return BitBlock(tuple(max(*bit) for bit in zip(a, b, strict = True)))
+                    return BitBlock(tuple(min(*bit) for bit in zip(a, b, strict = True)))
 
                 assert 3 <= n <= N
                 return (b for b in blocks if overlayBits(block, b).n() == n)
@@ -236,14 +239,15 @@ def finalizeImage(image: Image) -> None:
         image.format = PNG
 
 @typechecked
-async def processImage(image: Image,
-                 *,
-                 resizeFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
-                 resizeWidth: int | None = None,
-                 resizeHeight: int | None = None,
-                 randomRotate: bool | None = None,
-                 randomFlip: bool | None = None,
-                 dither: bool| None = None) -> Image | None:
+async def processImage(image: Image,  # ToDo: Add second image as size source (instead of 'pad' argument), that would help resolving dependencies
+                       *,
+                       resizeFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
+                       resizeWidth: int | None = None,
+                       resizeHeight: int | None = None,
+                       pad: bool | None = None,
+                       randomRotate: bool | None = None,
+                       randomFlip: bool | None = None,
+                       dither: bool | None = None) -> Image | None:
     """Converts the arbitrary `Image` to 1-bit B&W with Alpha format."""
     processed = grayscale = await to_thread(image.convert, GRAYSCALE)  # 8-bit grayscale
     if resizeFactor not in (None, 1) or resizeWidth is not None or resizeHeight is not None:
@@ -254,21 +258,25 @@ async def processImage(image: Image,
         if resizeHeight is not None and (not isinstance(resizeHeight, int) or resizeHeight <= 0):
             raise ValueError(f"Bad resizeHeight {resizeHeight}, must be positive int")
         if resizeFactor:
-            if resizeWidth or resizeHeight:
-                raise ValueError("Either resizeFactor or resizeWidth/resizeHeight can be specified")
-            resizeWidth = round(resizeFactor * image.width)
-            resizeHeight = round(resizeFactor * image.height)
-        elif resizeWidth and not resizeHeight:
-            resizeHeight = round(float(image.height) * resizeWidth / image.width)
-        elif resizeHeight and not resizeWidth:
-            resizeWidth = round(float(image.width) * resizeHeight / image.height)
-        assert resizeWidth
-        assert resizeHeight
-        processed = await to_thread(processed.resize, (resizeWidth, resizeHeight), Resampling.BICUBIC)
+            if pad or resizeWidth or resizeHeight:
+                raise ValueError("Either resizeFactor or resizeWidth/resizeHeight/pad can be specified")
+            processed = await to_thread(imageScale, processed, resizeFactor, RESAMPLING)
+        elif pad:
+            if not resizeWidth or not resizeHeight:
+                raise ValueError("pad requires both resizeWidth and resizeHeight to be specified")
+            processed = await to_thread(imagePad, processed, (resizeWidth, resizeHeight), RESAMPLING, color = 255)  # White background in grayscale
+        else:
+            if resizeWidth and not resizeHeight:
+                resizeHeight = round(float(image.height) * resizeWidth / image.width)
+            elif resizeHeight and not resizeWidth:
+                resizeWidth = round(float(image.width) * resizeHeight / image.height)
+            assert resizeWidth
+            assert resizeHeight
+            processed = await to_thread(processed.resize, (resizeWidth, resizeHeight), RESAMPLING)
     if randomRotate:  # ToDo: Should we save rotate angle and flip bit somewhere?
-        processed = await to_thread(processed.rotate, choice(range(1, 359 + 1)), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background
+        processed = await to_thread(processed.rotate, choice(range(1, 359 + 1)), RESAMPLING, expand = True, fillcolor = 255)  # White background in grayscale
     if randomFlip and choice((False, True)):
-        processed = await to_thread(ImageFromArray, np.fliplr(np.asarray(processed)))
+        processed = await to_thread(processed.transpose, Transpose.FLIP_LEFT_RIGHT)
     if image.mode == BW1 and hasAlpha(image) and processed is grayscale:
         return None  # Indicates that processing was useless and original image could be used as it was
     processed = await to_thread(processed.convert, BW1, dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)
@@ -276,27 +284,57 @@ async def processImage(image: Image,
     return processed
 
 @typechecked
-async def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None = None, *, smooth: bool | None = None) -> tuple[Image, Image]:  # noqa: ARG001  # pylint: disable=unused-argument
+async def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None = None, *, smooth: bool | None = None) -> tuple[Image, Image]:
     """
     Generates lock and key images from the specified source `Image`.
     If `lockMask` and/or `keyMask` are provided,
     they are used as visible hints on the corresponding output images.
     """
     # PIL/NumPy array indexes are `y` first, `x` second
-    dimensions = (source.height * 2, source.width * 2) if smooth else (source.height, source.width)
-    lockArray = np.empty(dimensions, bool)
-    keyArray = np.empty(dimensions, bool)
-    for ((y, x), b) in np.ndenumerate(np.asarray(source, bool)):
-        if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
-            await sleep(0)
-        if smooth:  # b: False is black, True is transparent
+    if lockMask or keyMask:
+        if lockMask:
+            assert lockMask.size == source.size
+        else:
+            lockMask = imageNew(BW1, source.size)
+        if keyMask:
+            assert keyMask.size == source.size
+        else:
+            keyMask = imageNew(BW1, source.size)
+        dimensions = (source.height * 2, source.width * 2)
+        lockArray = np.empty(dimensions, bool)
+        keyArray = np.empty(dimensions, bool)
+        lockMaskArray = np.asarray(lockMask, bool)
+        keyMaskArray = np.asarray(keyMask, bool)
+        for ((y, x), s) in np.ndenumerate(np.asarray(source, bool)):
+            if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
+                await sleep(0)
+            l = lockMaskArray[y, x].item()  # noqa: E741
+            k = keyMaskArray[y, x].item()
+            s = s.item()  # noqa: PLW2901  # pylint: disable=redefined-loop-name
+            x *= 2 ; y *= 2  # noqa: E702, PLW2901  # pylint: disable=multiple-statements, redefined-loop-name
+            (a1, a2) = BitBlock.getRandomPair(3 - l, 3 - k, 4 - s)
+            lockArray[y : y + 2, x : x + 2] = a1
+            keyArray[y : y + 2, x : x + 2] = a2
+    elif smooth:
+        dimensions = (source.height * 2, source.width * 2)
+        lockArray = np.empty(dimensions, bool)
+        keyArray = np.empty(dimensions, bool)
+        for ((y, x), s) in np.ndenumerate(np.asarray(source, bool)):
+            if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
+                await sleep(0)
             x *= 2 ; y *= 2  # noqa: E702, PLW2901  # pylint: disable=multiple-statements, redefined-loop-name
             (a1, a2) = BitBlock.getRandomPair(2, 2, 4)
-            lockArray[y : y + 2, x : x + 2] = r2 = a1
-            keyArray[y : y + 2, x : x + 2] = r2 if b else a2
-        else:
+            lockArray[y : y + 2, x : x + 2] = a1
+            keyArray[y : y + 2, x : x + 2] = a1 if s else a2
+    else:
+        lockArray = np.empty(source.size, bool)
+        keyArray = np.empty(source.size, bool)
+        for ((y, x), s) in np.ndenumerate(np.asarray(source, bool)):
+            if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
+                await sleep(0)
             lockArray[y, x] = r = choice((False, True))
-            keyArray[y, x] = r if b else not r
+            keyArray[y, x] = r if s else not r
+
     await sleep(0)
     lockImage = ImageFromArray(lockArray)
     await sleep(0)
