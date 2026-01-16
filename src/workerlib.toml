@@ -6,7 +6,7 @@ sync_main_only = true
 "./Steganography.py" = ""
 
 [exports]
-"Steganography" = ["encrypt", "overlay", "processImage", "asyncProcessImage"]
+"Steganography" = ["encrypt", "overlay", "processImage"]
 
 [adapters]
 "Steganography" = ["Image", "imageToBytes", "loadImage"]

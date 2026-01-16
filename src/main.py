@@ -554,7 +554,7 @@ class ImageBlock:
             assert isinstance(ret[0], Image), f"{type(ret)} {type(ret[0])}"
             assert len(ret) == len(targets), f"{processFunction.__name__}() returned {len(ret)} images, expected {len(targets)}"
             for (target, image) in zip(targets, ret, strict = True):
-                target.completeOperation(image, imageToBytes(image))
+                target.completeOperation(image, await imageToBytes(image))
         except Exception as ex:  # noqa : BLE001
             for target in targets:
                 target.error(_("processing image"), ex)
@@ -568,12 +568,12 @@ class ImageBlock:
         assert cls.worker
         await gather(
             cls.process(Stage.PROCESSED_SOURCE,
-                        cls.worker.asyncProcessImage, Stage.SOURCE,  # type: ignore[attr-defined]
+                        cls.worker.processImage, Stage.SOURCE,  # type: ignore[attr-defined]
                         options = ('resizeFactor', 'resizeWidth', 'resizeHeight', 'randomRotate', 'dither')),
             cls.process(Stage.PROCESSED_LOCK,
-                        cls.worker.asyncProcessImage, Stage.LOCK),  # type: ignore[attr-defined]
+                        cls.worker.processImage, Stage.LOCK),  # type: ignore[attr-defined]
             cls.process(Stage.PROCESSED_KEY,
-                        cls.worker.asyncProcessImage, Stage.KEY),  # type: ignore[attr-defined]
+                        cls.worker.processImage, Stage.KEY),  # type: ignore[attr-defined]
         )
         await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
                           cls.worker.encrypt, Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),  # type: ignore[attr-defined]
@@ -752,7 +752,7 @@ class ImageBlock:
             try:
                 log("Loading image:", fileName)
                 await repaint()
-                image = loadImage(imageBytes, fileName)
+                image = await loadImage(imageBytes, fileName)
             except Exception as ex:  # noqa : BLE001
                 self.error(_("loading image"), ex)
                 await repaint()
@@ -782,7 +782,7 @@ class ImageBlock:
             await repaint()
             assert data, repr(data)
             imageBytes = await blobToBytes(data)
-            image = loadImage(imageBytes)
+            image = await loadImage(imageBytes)
         except Exception as ex:  # noqa : BLE001
             self.error(_("loading image"), ex)
             await repaint()

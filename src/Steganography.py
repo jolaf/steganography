@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser
-from asyncio import run, to_thread
+from asyncio import run, sleep, to_thread
 from collections.abc import Buffer, Callable, Mapping
 from contextlib import suppress
 from io import BytesIO
@@ -79,7 +79,7 @@ def error(*args: Any) -> None:
     sysExit(1)
 
 @typechecked
-def loadImage(source: ImagePath, fileName: str | None = None) -> Image:
+async def loadImage(source: ImagePath, fileName: str | None = None) -> Image:
     """
     Returns `Image` loaded from the specified file path,
     input stream or any bytes `Buffer`.
@@ -87,24 +87,24 @@ def loadImage(source: ImagePath, fileName: str | None = None) -> Image:
     `fileName` can be added as a hint to image format in cases
     when `source` does not provide such a clue, like `BytesIO`.
     """
-    image = imageOpen(BytesIO(source) if isinstance(source, Buffer) else source)
+    image = await to_thread(imageOpen, BytesIO(source) if isinstance(source, Buffer) else source)
     if not image.format:
         image.format = getImageFormatFromExtension(fileName or source)
     return image
 
 @typechecked
-def saveImage(image: Image, path: ImagePath) -> None:
-    image.save(path, getImageFormatFromExtension(path), optimize = True,  # type: ignore[arg-type]
+async def saveImage(image: Image, path: ImagePath) -> None:
+    await to_thread(image.save, path, getImageFormatFromExtension(path), optimize = True,  # type: ignore[arg-type]
                transparency = 1 if image.mode == BW1 else None)  # `transparency` here sets the index of the color to make transparent, 1 is usually white
 
 @typechecked
-def imageToBytes(image: Image) -> Buffer:
+async def imageToBytes(image: Image) -> Buffer:
     """
     Returns the `Image` as bytes `Buffer` that can be written to a file
     with extension corresponding to image format.
     """
     stream = BytesIO()
-    saveImage(image, stream)
+    await saveImage(image, stream)
     return stream.getbuffer()
 
 @typechecked
@@ -155,7 +155,7 @@ def finalizeImage(image: Image) -> None:
         image.format = PNG
 
 @typechecked
-async def asyncProcessImage(image: Image,
+async def processImage(image: Image,
                  *,
                  resizeFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
                  resizeWidth: int | None = None,
@@ -187,7 +187,7 @@ async def asyncProcessImage(image: Image,
     if randomRotate:  # ToDo: Should we save rotate angle and flip bit somewhere?
         processed = await to_thread(processed.rotate, choice(range(1, 359 + 1)), Resampling.BICUBIC, expand = True, fillcolor = 255)  # White background
     if randomFlip and choice((False, True)):
-        processed = ImageFromArray(np.fliplr(np.asarray(processed)))
+        processed = await to_thread(ImageFromArray, np.fliplr(np.asarray(processed)))
     if image.mode == BW1 and hasAlpha(image) and processed is grayscale:
         return None  # Indicates that processing was useless and original image could be used as it was
     processed = await to_thread(processed.convert, BW1, dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)
@@ -195,11 +195,7 @@ async def asyncProcessImage(image: Image,
     return processed
 
 @typechecked
-def processImage(*args: Any, **kwargs: Any) -> Image | None:
-    return run(asyncProcessImage(*args, **kwargs))
-
-@typechecked
-def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None = None, *, smooth: bool | None = None) -> tuple[Image, Image]:  # noqa: ARG001  # pylint: disable=unused-argument
+async def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None = None, *, smooth: bool | None = None) -> tuple[Image, Image]:  # noqa: ARG001  # pylint: disable=unused-argument
     """
     Generates lock and key images from the specified source `Image`.
     If `lockMask` and/or `keyMask` are provided,
@@ -210,6 +206,8 @@ def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None 
     lockArray = np.empty(dimensions, bool)
     keyArray = np.empty(dimensions, bool)
     for ((y, x), b) in np.ndenumerate(np.asarray(source, bool)):
+        if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
+            await sleep(0)
         if smooth:  # b: False is black, True is transparent
             x *= 2 ; y *= 2  # noqa: E702, PLW2901  # pylint: disable=multiple-statements, redefined-loop-name
             lockArray[y : y + 2, x : x + 2] = r2 = choice(SMOOTH_COMBINATIONS)
@@ -217,14 +215,17 @@ def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None 
         else:
             lockArray[y, x] = r = choice((False, True))
             keyArray[y, x] = r if b else not r
+    await sleep(0)
     lockImage = ImageFromArray(lockArray)
+    await sleep(0)
     keyImage = ImageFromArray(keyArray)
+    await sleep(0)
     finalizeImage(lockImage)
     finalizeImage(keyImage)
     return (lockImage, keyImage)
 
 @typechecked
-def overlay(lockImage: Image, keyImage: Image, *, border: bool | None = None) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
+async def overlay(lockImage: Image, keyImage: Image, *, border: bool | None = None) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
     """
     Emulates precise overlaying of two 1-bit images one on top of the other,
     as if they were printed on transparent film.
@@ -232,7 +233,7 @@ def overlay(lockImage: Image, keyImage: Image, *, border: bool | None = None) ->
     assert lockImage.mode == BW1
     assert keyImage.mode == BW1
     assert lockImage.size == keyImage.size
-    ret = ImageFromArray(np.minimum(np.asarray(lockImage), np.asarray(keyImage)))
+    ret = await to_thread(lambda: ImageFromArray(np.minimum(np.asarray(lockImage), np.asarray(keyImage))))
     finalizeImage(ret)
     return ret
 
@@ -254,9 +255,9 @@ def main(*args: str) -> None:
             if len(tokens) != 2:
                 error('Invalid resize argument: ', size)
             options.resize = tuple(tokens)  # pylint: disable=redefined-variable-type
-    image = loadImage(options.inputImage)
-    processed = processImage(image, **vars(options)) or image
-    saveImage(processed, 'processed.png')  # ToDo: Generate proper file names
+    image = run(loadImage(options.inputImage))
+    processed = run(processImage(image, **vars(options))) or image
+    run(saveImage(processed, 'processed.png'))  # ToDo: Generate proper file names
     sysExit(0)
 
 __all__ = (
