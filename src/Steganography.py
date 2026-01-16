@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from argparse import ArgumentParser
 from asyncio import run, sleep, to_thread
-from collections.abc import Buffer, Callable, Mapping
+from collections.abc import Buffer, Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from io import BytesIO
+from itertools import product
+from math import factorial as f
 from mimetypes import guess_type
 from re import split
 from secrets import choice
 from sys import argv, exit as sysExit, stderr
-from typing import Any, Final, IO
+from typing import cast, Any, ClassVar, Final, IO, Literal
 
 try:
     from PIL.Image import fromarray as ImageFromArray, open as imageOpen, Dither, Image, Resampling
@@ -20,7 +22,6 @@ except ImportError as ex:
 
 try:
     import numpy as np
-    import numpy.typing as npt
     np.zeros((100, 100))  # Warm-up JIT
 except ImportError as ex:
     raise ImportError(f"{type(ex).__name__}: {ex}\n\nThis module requires NumPy, please install v2.2.5 or later: https://pypi.org/project/numpy/\n") from ex
@@ -60,14 +61,103 @@ MAPPING_MODE_PARAMETERS: Final[tuple[Mapping[str, str | int], ...]] = (
     { '2': 16, '4': 32 },
 )
 
-SMOOTH_COMBINATIONS: Final[tuple[npt.NDArray[np.bool], ...]] = tuple(np.array(v, bool) for v in (
-    ((0, 0), (1, 1)),
-    ((0, 1), (0, 1)),
-    ((0, 1), (1, 0)),
-    ((1, 0), (0, 1)),
-    ((1, 0), (1, 0)),
-    ((1, 1), (0, 0)),
-))
+N: Final[int] = 2 * 2  # Size of "unit" pixel block to operate on
+type Bit = Literal[0, 1]
+BitsN = tuple[Bit, Bit, Bit, Bit]  # Superclass for BitBlock
+type NumberedBlocks = Mapping[int, Sequence[BitBlock]]
+Array = np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.bool]]
+type NumberedArrays = Mapping[int, Sequence[Array]]
+type ArrayMap = tuple[Array, Mapping[int, NumberedArrays]]
+
+class BitBlock(BitsN):
+    __slots__ = ()  # Required for effective tuple inheritance, not really used
+
+    nBlocks: ClassVar[Sequence[BitBlock]] = ()  # All possible N-bit blocks
+    nBitsSet: ClassVar[NumberedBlocks] = {}  # Map of all possible bit blocks with 'int' bit set
+    fullMap: ClassVar[Mapping[int, Sequence[ArrayMap]]] = {}  # Fully coordinated map of blocks for image processing
+
+    def n(self) -> int:
+        return self.count(1)
+
+    def total(self, other: BitBlock) -> BitBlock:  # Simulates overlaying other blocks on this block
+        return BitBlock(tuple(max(*bit) for bit in zip(self, other, strict = True)))
+
+    def filterForTotal(self, blocks: Iterable[BitBlock], n: int) -> Iterable[BitBlock]:
+        assert 3 <= n <= N
+        return (b for b in blocks if self.total(b).n() == n)
+
+    def compliment(self, n: int, total: int) -> Sequence[BitBlock]:
+        assert 2 <= n < N
+        assert 3 <= total <= N
+        ret = tuple(self.filterForTotal(self.nBitsSet[n], total))
+        expectedLengths: Final[Mapping[tuple[int, int, int], int]] = {
+            (2, 2, 3): 4,  # I was too lazy to figure out the formula
+            (2, 2, 4): 1,
+            (2, 3, 3): 2,
+            (2, 3, 4): 2,
+            (3, 2, 3): 3,
+            (3, 2, 4): 3,
+            (3, 3, 3): 1,
+            (3, 3, 4): 3,
+        }
+        assert len(ret) == expectedLengths[(self.n(), n, total)], (len(ret), self.n(), n, total, self, ret)
+        return ret
+
+    def toArray(self) -> Array:
+        return Array(self)
+
+    @staticmethod
+    def filter(blocks: Iterable[BitBlock], n: int) -> Iterable[BitBlock]:
+        assert 2 <= n <= N
+        return (b for b in blocks if b.n() == n)
+
+    @classmethod
+    def generateNBlocks(cls) -> None:
+        cls.nBlocks = tuple(BitBlock(cast(BitsN, p)) for p in product((0, 1), repeat = N))
+        assert len(cls.nBlocks) == 2 ** N, len(cls.nBlocks)
+
+    @classmethod
+    def generateNBitSet(cls, n: int) -> Sequence[BitBlock]:
+        assert 2 <= n <= N
+        ret = tuple(cls.filter(cls.nBlocks, n))
+        expectedLength = f(N) / (f(n) * f(N - n))
+        assert len(ret) == expectedLength, f"{len(ret)} != {expectedLength}"
+        return ret
+
+    @staticmethod
+    def generateArrayMap() -> None:
+        ret: Final[dict[int, Sequence[ArrayMap]]] = {}
+        for a in range(2, N):
+            data: list[ArrayMap] = []
+            for block in BitBlock.nBitsSet[a]:
+                compliments: dict[int, NumberedArrays] = {}
+                for n in range(2, N):
+                    totals: dict[int, Sequence[Array]] = {}
+                    for total in range(3, N + 1):
+                        totals[total] = tuple(b.toArray() for b in block.compliment(n, total))
+                    compliments[n] = totals
+                data.append((block.toArray(), compliments))
+            ret[a] = tuple(data)
+        BitBlock.fullMap = ret
+
+    @classmethod
+    def init(cls) -> None:
+        assert not cls.nBlocks, "BitBlock.init() should only be called once"
+        cls.generateNBlocks()
+        cls.nBitsSet = {n: BitBlock.generateNBitSet(n) for n in range(2, N)}
+        cls.generateArrayMap()
+
+    @classmethod
+    def getRandomPair(cls, n1: int, n2: int, total: int) -> tuple[Array, Array]:
+        assert 2 <= n1 < N
+        assert 2 <= n2 < N
+        assert 3 <= total <= N
+        if not cls.fullMap:
+            cls.init()
+        assert cls.fullMap
+        (a1, nA) = choice(cls.fullMap[n1])
+        a2 = choice(nA[n2][total])
+        return (a1, a2)
 
 @typechecked
 def log(*args: Any) -> None:
@@ -210,8 +300,9 @@ async def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image |
             await sleep(0)
         if smooth:  # b: False is black, True is transparent
             x *= 2 ; y *= 2  # noqa: E702, PLW2901  # pylint: disable=multiple-statements, redefined-loop-name
-            lockArray[y : y + 2, x : x + 2] = r2 = choice(SMOOTH_COMBINATIONS)
-            keyArray[y : y + 2, x : x + 2] = r2 if b else np.invert(r2)
+            (a1, a2) = BitBlock.getRandomPair(2, 2, 4)
+            lockArray[y : y + 2, x : x + 2] = r2 = a1
+            keyArray[y : y + 2, x : x + 2] = r2 if b else a2
         else:
             lockArray[y, x] = r = choice((False, True))
             keyArray[y, x] = r if b else not r
@@ -260,17 +351,17 @@ def main(*args: str) -> None:
     run(saveImage(processed, 'processed.png'))  # ToDo: Generate proper file names
     sysExit(0)
 
-__all__ = (
-    'Image',
-    'ImagePath',
-    'encrypt',
-    'getImageMode',
-    'getMimeTypeFromImage',
-    'imageToBytes',
-    'loadImage',
-    'overlay',
-    'processImage',
-)
-
 if __name__ == '__main__':
     main(*argv[1:])
+else:
+    __all__ = (
+        'Image',
+        'ImagePath',
+        'encrypt',
+        'getImageMode',
+        'getMimeTypeFromImage',
+        'imageToBytes',
+        'loadImage',
+        'overlay',
+        'processImage',
+    )

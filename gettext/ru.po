@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Steganography 1.0\n"
 "POT-Creation-Date: 2026-01-05 14:31+0300\n"
-"PO-Revision-Date: 2026-01-11 03:34+0300\n"
+"PO-Revision-Date: 2026-01-16 13:25+0300\n"
 "Last-Translator: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language-Team: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language: ru\n"
@@ -144,7 +144,7 @@ msgstr "Равномерный фон"
 
 #: index.html:10 index.html:11 index.html:35 index.html:4
 msgid "Steganography"
-msgstr "Стеганография"
+msgstr "Стёганография"
 
 #: index.html:42
 msgid "Task name"
