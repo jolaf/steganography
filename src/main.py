@@ -2,7 +2,7 @@
 # Note: this module is PyScript-only, it won't work outside of browser
 from __future__ import annotations
 
-PREFIX = "[python]"
+PREFIX = "[main]"
 print(f"{PREFIX} Loading app")
 
 from asyncio import create_task, gather, get_running_loop, sleep, to_thread, AbstractEventLoop
@@ -864,6 +864,11 @@ async def main() -> None:
             raise RuntimeError("Beartype v" + beartypeVersion + " is not operating properly")
         except BeartypeException:
             log("Beartype v" + beartypeVersion + " is up and watching, remove it from PyScript configuration to make things faster")
+    try:
+        assert False  # noqa: B011, PT015
+        log("Assertions are disabled")  # type: ignore[unreachable]
+    except AssertionError:
+        log("Assertions are enabled")
     await repaint()
     await ImageBlock.init()
     hide('log')

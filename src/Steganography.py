@@ -36,6 +36,7 @@ type ImagePath = StrOrBytesPath | Buffer | IO[bytes] | BytesIO  # The last one i
 
 PNG: Final[str] = 'PNG'
 BW1: Final[str] = '1'
+GRAYSCALE: Final[str] = 'L'
 
 IMAGE_MODE_DESCRIPTIONS: Final[Mapping[str, str]] = {
     BW1: '1-bit B&W',
@@ -55,7 +56,7 @@ IMAGE_MODE_DESCRIPTIONS: Final[Mapping[str, str]] = {
     'YCbCr': '8-bit YCbCr',
 }
 
-MAPPING_MODE_PARAMETERS: Final[tuple[Mapping[str, str | int], ...]] = (
+MAPPING_MODE_PARAMETERS: Final[Sequence[Mapping[str, str | int]]] = (
     { '<': 'little', '>': 'big' },
     { 'i': 'signed', 'u': 'unsigned' },
     { '2': 16, '4': 32 },
@@ -64,99 +65,89 @@ MAPPING_MODE_PARAMETERS: Final[tuple[Mapping[str, str | int], ...]] = (
 N: Final[int] = 2 * 2  # Size of "unit" pixel block to operate on
 type Bit = Literal[0, 1]
 BitsN = tuple[Bit, Bit, Bit, Bit]  # Superclass for BitBlock
-type NumberedBlocks = Mapping[int, Sequence[BitBlock]]
 Array = np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.bool]]
-type NumberedArrays = Mapping[int, Sequence[Array]]
-type ArrayMap = tuple[Array, Mapping[int, NumberedArrays]]
+type ArrayMap = tuple[Array, Mapping[int, Mapping[int, Sequence[Array]]]]
 
+EXPECTED_COMPLIMENT_LENGTHS: Final[Mapping[tuple[int, int, int], int]] = {
+    (2, 2, 3): 4,  # I was too lazy to figure out the formula
+    (2, 2, 4): 1,
+    (2, 3, 3): 2,
+    (2, 3, 4): 2,
+    (3, 2, 3): 3,
+    (3, 2, 4): 3,
+    (3, 3, 3): 1,
+    (3, 3, 4): 3,
+}
+
+@typechecked
 class BitBlock(BitsN):
     __slots__ = ()  # Required for effective tuple inheritance, not really used
 
-    nBlocks: ClassVar[Sequence[BitBlock]] = ()  # All possible N-bit blocks
-    nBitsSet: ClassVar[NumberedBlocks] = {}  # Map of all possible bit blocks with 'int' bit set
-    fullMap: ClassVar[Mapping[int, Sequence[ArrayMap]]] = {}  # Fully coordinated map of blocks for image processing
+    blockMap: ClassVar[Mapping[int, Sequence[ArrayMap]]] = {}  # Fully coordinated map of blocks for image processing
 
     def n(self) -> int:
         return self.count(1)
 
-    def total(self, other: BitBlock) -> BitBlock:  # Simulates overlaying other blocks on this block
-        return BitBlock(tuple(max(*bit) for bit in zip(self, other, strict = True)))
-
-    def filterForTotal(self, blocks: Iterable[BitBlock], n: int) -> Iterable[BitBlock]:
-        assert 3 <= n <= N
-        return (b for b in blocks if self.total(b).n() == n)
-
-    def compliment(self, n: int, total: int) -> Sequence[BitBlock]:
-        assert 2 <= n < N
-        assert 3 <= total <= N
-        ret = tuple(self.filterForTotal(self.nBitsSet[n], total))
-        expectedLengths: Final[Mapping[tuple[int, int, int], int]] = {
-            (2, 2, 3): 4,  # I was too lazy to figure out the formula
-            (2, 2, 4): 1,
-            (2, 3, 3): 2,
-            (2, 3, 4): 2,
-            (3, 2, 3): 3,
-            (3, 2, 4): 3,
-            (3, 3, 3): 1,
-            (3, 3, 4): 3,
-        }
-        assert len(ret) == expectedLengths[(self.n(), n, total)], (len(ret), self.n(), n, total, self, ret)
-        return ret
-
     def toArray(self) -> Array:
-        return Array(self)
-
-    @staticmethod
-    def filter(blocks: Iterable[BitBlock], n: int) -> Iterable[BitBlock]:
-        assert 2 <= n <= N
-        return (b for b in blocks if b.n() == n)
+        return np.array((self[:2], self[2:]), bool)
 
     @classmethod
-    def generateNBlocks(cls) -> None:
-        cls.nBlocks = tuple(BitBlock(cast(BitsN, p)) for p in product((0, 1), repeat = N))
-        assert len(cls.nBlocks) == 2 ** N, len(cls.nBlocks)
+    def _init(cls) -> None:
+        assert not cls.blockMap, "BitBlock.init() should only be called once"
 
-    @classmethod
-    def generateNBitSet(cls, n: int) -> Sequence[BitBlock]:
-        assert 2 <= n <= N
-        ret = tuple(cls.filter(cls.nBlocks, n))
-        expectedLength = f(N) / (f(n) * f(N - n))
-        assert len(ret) == expectedLength, f"{len(ret)} != {expectedLength}"
-        return ret
+        nBlocks: Final[Sequence[BitBlock]] = tuple(BitBlock(cast(BitsN, p)) for p in product((0, 1), repeat = N))
+        assert len(nBlocks) == 2 ** N, len(nBlocks)
 
-    @staticmethod
-    def generateArrayMap() -> None:
-        ret: Final[dict[int, Sequence[ArrayMap]]] = {}
+        def generateNBitSet(n: int) -> Sequence[BitBlock]:
+            ret = tuple(b for b in nBlocks if b.n() == n)
+            expectedLength = f(N) / (f(n) * f(N - n))
+            assert len(ret) == expectedLength, f"{len(ret)} != {expectedLength}"
+            return ret
+
+        nBitsSet: Final[Mapping[int, Sequence[BitBlock]]] = {n: generateNBitSet(n) for n in range(2, N)}
+
+        def compliment(block: BitBlock, n: int, total: int) -> Sequence[BitBlock]:
+            assert 2 <= n < N
+            assert 3 <= total <= N
+
+            def filterByOverlay(block: BitBlock, blocks: Iterable[BitBlock], n: int) -> Iterable[BitBlock]:
+                def overlayBits(a: BitBlock, b: BitBlock) -> BitBlock:  # Simulates overlaying two blocks
+                    return BitBlock(tuple(max(*bit) for bit in zip(a, b, strict = True)))
+
+                assert 3 <= n <= N
+                return (b for b in blocks if overlayBits(block, b).n() == n)
+
+            ret: Sequence[BitBlock] = tuple(filterByOverlay(block, nBitsSet[n], total))
+            assert len(ret) == EXPECTED_COMPLIMENT_LENGTHS[(block.n(), n, total)], (len(ret), block.n(), n, total, block, ret)
+            return ret
+
+        blockMap: Final[dict[int, Sequence[ArrayMap]]] = {}
+
         for a in range(2, N):
             data: list[ArrayMap] = []
-            for block in BitBlock.nBitsSet[a]:
-                compliments: dict[int, NumberedArrays] = {}
+            for block in nBitsSet[a]:
+                compliments: dict[int, Mapping[int, Sequence[Array]]] = {}
                 for n in range(2, N):
                     totals: dict[int, Sequence[Array]] = {}
                     for total in range(3, N + 1):
-                        totals[total] = tuple(b.toArray() for b in block.compliment(n, total))
+                        totals[total] = tuple(b.toArray() for b in compliment(block, n, total))
                     compliments[n] = totals
                 data.append((block.toArray(), compliments))
-            ret[a] = tuple(data)
-        BitBlock.fullMap = ret
+            blockMap[a] = tuple(data)
 
-    @classmethod
-    def init(cls) -> None:
-        assert not cls.nBlocks, "BitBlock.init() should only be called once"
-        cls.generateNBlocks()
-        cls.nBitsSet = {n: BitBlock.generateNBitSet(n) for n in range(2, N)}
-        cls.generateArrayMap()
+        cls.blockMap = blockMap
 
     @classmethod
     def getRandomPair(cls, n1: int, n2: int, total: int) -> tuple[Array, Array]:
         assert 2 <= n1 < N
         assert 2 <= n2 < N
         assert 3 <= total <= N
-        if not cls.fullMap:
-            cls.init()
-        assert cls.fullMap
-        (a1, nA) = choice(cls.fullMap[n1])
+        if not cls.blockMap:
+            cls._init()
+        assert cls.blockMap
+        (a1, nA) = choice(cls.blockMap[n1])
         a2 = choice(nA[n2][total])
+        assert np.sum(np.minimum(a1, a2) == 0) == total, (n1, a1, n2, a2, np.minimum(a1, a2), np.minimum(a1, a2) == 0, np.sum(np.minimum(a1, a2) == 0), total)  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
         return (a1, a2)
 
 @typechecked
@@ -254,7 +245,7 @@ async def processImage(image: Image,
                  randomFlip: bool | None = None,
                  dither: bool| None = None) -> Image | None:
     """Converts the arbitrary `Image` to 1-bit B&W with Alpha format."""
-    processed = grayscale = await to_thread(image.convert, 'L')  # 8-bit grayscale
+    processed = grayscale = await to_thread(image.convert, GRAYSCALE)  # 8-bit grayscale
     if resizeFactor not in (None, 1) or resizeWidth is not None or resizeHeight is not None:
         if resizeFactor is not None and (not isinstance(resizeFactor, int | float) or resizeFactor <= 0):
             raise ValueError(f"Bad resizeFactor {resizeFactor}, must be positive int or float")

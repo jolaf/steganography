@@ -118,6 +118,7 @@ def _adaptersFrom(mapping: Mapping[str, Sequence[str]] | None) -> None:
         if not isfunction(decoder) and not iscoroutinefunction(decoder):
             _error(f"Bad adapter encoder {names[2]} for module {moduleName}, must be function or coroutine, got {type(decoder)}")
         ret.append((cls, encoder, decoder))
+        _log(f"Adapter created: {decoder} => {cls} => {encoder}")
     global __adapters__  # noqa: PLW0603  # pylint: disable=global-statement
     __adapters__ = tuple(ret)
 
@@ -165,13 +166,19 @@ if RUNNING_IN_WORKER:  ##
 
     _PREFIX = "[worker]"
 
-    _log("Starting worker")
+    _log("Starting worker, sync_main_only =", config.get('sync_main_only', False))
 
     try:
         from beartype import __version__ as _version
         _log(f"Beartype v{_version} is up and watching, remove it from worker configuration to make things faster")
     except ImportError:
         _log("WARNING: beartype is not available, running fast with typing unchecked")
+
+    try:
+        assert False  # noqa: B011, PT015
+        _log("Assertions are disabled")  # type: ignore[unreachable]
+    except AssertionError:
+        _log("Assertions are enabled")
 
     @_typechecked
     def _workerSerialized(func: _FunctionOrCoroutine) -> _CoroutineFunction:
