@@ -448,9 +448,15 @@ class Options(Storage):
             del self[f'file-{name}-fileName']
         await self.sync()
 
-    def fillOptions(self, options: Iterable[str] | None) -> Mapping[str, Any]:
+    def fillOptions(self, options: Iterable[str] | Mapping[str, Any] | None) -> Mapping[str, Any]:
         if not options:
             return {}
+        if isinstance(options, Mapping):
+            for (option, value) in tuple(options.items()):  # clone for safe modification
+                if value is None:
+                    if (value := self.get(option)) and value != super().__getattribute__(option):
+                        options[option] = value
+            return options
         ret: dict[str, Any] = {}
         for option in options:
             if (value := self.get(option)) and value != super().__getattribute__(option):  # ToDo: Maybe instead of this hack we should have proper Option class, encapsulating type, default value, actual value and Element reference
@@ -575,9 +581,8 @@ class ImageBlock:
         await repaint()
         try:
             sourceImages = tuple(source.image for source in chain(sources, optionalSources))
-            if not isinstance(options, Mapping):
-                assert cls.options
-                options = cls.options.fillOptions(options)
+            assert cls.options
+            options = cls.options.fillOptions(options)
             if iscoroutinefunction(processFunction) or isinstance(processFunction, JsProxy):  # pylint: disable=consider-ternary-expression
                 ret = await processFunction(*sourceImages, **options)
             else:
@@ -784,11 +789,10 @@ class ImageBlock:
             if imageBytes == self.REMOVED:
                 (imageBytes, fileName) = (None, None)
         elif filePath := self.PRELOADED_FILES.get(self.stage):
-            path = Path(filePath)
-            fileName = path.name
-            log("Fetching preloaded file:", fileName)
+            log("Fetching preloaded file:", filePath)
             await repaint()
             imageBytes = await fetch(filePath).arrayBuffer()  # type: ignore[attr-defined]
+            fileName = Path(filePath).name
         else:
             (imageBytes, fileName) = (None, None)
         if imageBytes:

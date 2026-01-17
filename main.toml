@@ -1,4 +1,4 @@
-packages = ["pillow", "numpy", "coolname"] # , "beartype"]
+packages = ["pillow", "numpy", "coolname", "beartype"]
 
 [files]
 "./workerlib.py" = ""

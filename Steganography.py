@@ -295,11 +295,11 @@ async def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image |
         if lockMask:
             assert lockMask.size == source.size
         else:
-            lockMask = imageNew(BW1, source.size)
+            lockMask = imageNew(BW1, source.size, 1)  # White/Transparent background
         if keyMask:
             assert keyMask.size == source.size
         else:
-            keyMask = imageNew(BW1, source.size)
+            keyMask = imageNew(BW1, source.size, 1)  # White/Transparent background
         dimensions = (source.height * 2, source.width * 2)
         lockArray = np.empty(dimensions, bool)
         keyArray = np.empty(dimensions, bool)

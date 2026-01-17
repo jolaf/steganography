@@ -1,4 +1,4 @@
-packages = ["pillow", "numpy"] # , "beartype"]
+packages = ["pillow", "numpy", "beartype"]
 
 sync_main_only = true
 
