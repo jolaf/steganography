@@ -452,11 +452,12 @@ class Options(Storage):
         if not options:
             return {}
         if isinstance(options, Mapping):
+            ret = dict(options)
             for (option, value) in tuple(options.items()):  # clone for safe modification
                 if value is None:
                     if (value := self.get(option)) and value != super().__getattribute__(option):
-                        options[option] = value
-            return options
+                        ret[option] = value
+            return ret
         ret: dict[str, Any] = {}
         for option in options:
             if (value := self.get(option)) and value != super().__getattribute__(option):  # ToDo: Maybe instead of this hack we should have proper Option class, encapsulating type, default value, actual value and Element reference
