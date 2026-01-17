@@ -1,8 +1,8 @@
 "use strict";
 
-/* global console */
 /* jshint browser: true */
 /* jshint esversion: 6 */
+/* global console */
 
 window.bootstrapLoadedOK = true;  // Used to check if local scripts can be loaded
 
@@ -59,7 +59,7 @@ let locationName;
 if (location.protocol === 'file:') {
     locationName = 'files';
 } else if (location.hostname === 'localhost') {
-    locationName = (location.port === '63342') ? 'PyCharm' : 'localhost';
+    locationName = location.port.startsWith('633') ? 'PyCharm' : 'localhost';
 } else if (location.hostname.endsWith('github.io')) {
     locationName = 'GitHub Pages';
 } else {
