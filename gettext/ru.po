@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Steganography 1.0\n"
 "POT-Creation-Date: 2026-01-05 14:31+0300\n"
-"PO-Revision-Date: 2026-01-16 13:25+0300\n"
+"PO-Revision-Date: 2026-01-18 16:57+0300\n"
 "Last-Translator: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language-Team: Vasily Zakharov <vmzakhar@gmail.com>\n"
 "Language: ru\n"
@@ -55,17 +55,13 @@ msgstr "Загрузка изображения"
 msgid "clear the fields to impose no limit"
 msgstr "очистите поля для снятия ограничений"
 
-#: index.html:90
-msgid "defaults to input image size"
-msgstr "по умолчанию равны размеру изображения"
-
-#: index.html:107
-msgid "defaults to key size"
-msgstr "по умолчанию равны размеру ключа"
-
 #: index.html:68
 msgid "only specify one value to constrain proportions"
 msgstr "указывайте только одно из значений, если хотите сохранить пропорции изображения"
+
+#: index.html:70
+msgid "specify one value only; smaller image would be placed in larger one randomly"
+msgstr "указывайте только одно из значений; меньшее изображение будет размещено внутри бо́льшего в случайном месте"
 
 #: index.html:45
 msgid "used to generate output file names"
@@ -124,7 +120,11 @@ msgstr "просмотр"
 
 #: index.html:93
 msgid "Random key rotation"
-msgstr "Поворот ключа на случайный угол"
+msgstr "Случайный поворот ключа"
+
+#: index.html:95
+msgid "Random key flip"
+msgstr "Случайное отзеркаливание"
 
 #: index.html:126
 msgid "Remove"
@@ -133,10 +133,6 @@ msgstr "Убрать"
 #: index.html:121
 msgid "Reset options to defaults"
 msgstr "Сбросить настройки на значения по умолчанию"
-
-#: index.html:110
-msgid "Resize key to lock"
-msgstr "Масштабировать изображение ключа до размеров изображения замка"
 
 #: index.html:118
 msgid "Smoother background"
@@ -164,23 +160,15 @@ msgstr "Максимальный размер просмотра"
 
 #: index.html
 msgid "Resize image to"
-msgstr "Масштабировать изображение до"
+msgstr "Масштабировать изображение в"
+
+#: index.html
+msgid "Resize lock to"
+msgstr "Масштабировать замок в"
 
 #: index.html
 msgid "times or"
-msgstr "крат или"
-
-#: index.html
-msgid "Crop image to"
-msgstr "Обрезать изображение до"
-
-#: index.html
-msgid "Key image size"
-msgstr "Размер изображения ключа"
-
-#: index.html
-msgid "Lock image size"
-msgstr "Размер изображения замка"
+msgstr "раз или до"
 
 #: index.html
 msgid "px"

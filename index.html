@@ -67,7 +67,7 @@
           px
           <span>(clear the fields to impose no limit)</span>
         </div>
-        <div id="option-resize-image-block">
+        <div id="option-resize-image-blosdfsfsdck">
           Resize image to
           <label for="option-resize-factor" hidden></label>
           <input id="option-resize-factor">
@@ -80,34 +80,8 @@
           px
           <span>(only specify one value to constrain proportions)</span>
         </div>
-        <div id="option-crop-image-block">
-          Crop image to
-          <label for="option-crop-width" hidden></label>
-          <input id="option-crop-width">
-          x
-          <label for="option-crop-height" hidden></label>
-          <input id="option-crop-height">
-          px
-        </div>
-        <div id="option-key-size-block">
-          Key image size:
-          <label for="option-key-factor" hidden></label>
-          <input id="option-key-factor">
-          times or
-          <label for="option-key-width" hidden></label>
-          <input id="option-key-width">
-          x
-          <label for="option-key-height" hidden></label>
-          <input id="option-key-height">
-          px
-          <span>(defaults to input image size)</span>
-        </div>
-        <div id="option-key-rotate-block">
-          <label for="option-key-rotate">Random key rotation</label>
-          <input id="option-key-rotate">
-        </div>
-        <div id="option-lock-size-block">
-          Lock image size:
+        <div id="option-lock-block">
+          Resize lock to
           <label for="option-lock-factor" hidden></label>
           <input id="option-lock-factor">
           times or
@@ -117,11 +91,13 @@
           <label for="option-lock-height" hidden></label>
           <input id="option-lock-height">
           px
-          <span>(defaults to key size)</span>
+          <span>(specify one value only; smaller image would be placed in larger one randomly)</span>
         </div>
-        <div id="option-key-resize-block">
-          <label for="option-key-resize">Resize key to lock</label>
-          <input id="option-key-resize">
+        <div id="option-random-block">
+          <label for="option-random-rotate">Random key rotation</label>
+          <input id="option-random-rotate">
+          <label for="option-random-flip">Random key flip</label>
+          <input id="option-random-flip">
         </div>
         <div id="option-dither-block">
           <label for="option-dither">Employ dithering</label>

@@ -391,7 +391,7 @@ def main(*args: str) -> None:
             options.resize = tuple(tokens)  # pylint: disable=redefined-variable-type
     image = run(loadImage(options.inputImage))
     processed = run(processImage(image, **vars(options))) or image
-    run(saveImage(processed, 'processed.png'))  # ToDo: Generate proper file names
+    run(saveImage(processed, 'processed.png'))  # ToDo: Copy pipeline from `main.py` here
     sysExit(0)
 
 if __name__ == '__main__':

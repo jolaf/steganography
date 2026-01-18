@@ -316,16 +316,11 @@ class Options(Storage):
         self.resizeFactor = 1.0
         self.resizeWidth = 0
         self.resizeHeight = 0
-        self.cropWidth = 0
-        self.cropHeight = 0
-        self.keyFactor = 1.0
-        self.keyWidth = 0
-        self.keyHeight = 0
-        self.keyRotate = False
         self.lockFactor = 1.0
         self.lockWidth = 0
         self.lockHeight = 0
-        self.keyResize = False
+        self.randomRotate = False
+        self.randomFlip = False
         self.dither = False
         self.smooth = False
 
@@ -618,7 +613,7 @@ class ImageBlock:
         processedSource = cls.imageBlocks[Stage.PROCESSED_SOURCE].image
         await cls.process(Stage.PROCESSED_LOCK,
                           cls.worker.processImage, Stage.LOCK,  # type: ignore[attr-defined]
-                          options = {'padWidth': processedSource and processedSource.width,
+                          options = {'padWidth': processedSource and processedSource.width,  # ToDo: Use lockSize here, calculate it
                                      'padHeight': processedSource and processedSource.height,
                                      'dither': None})
         await cls.process(Stage.PROCESSED_KEY,
