@@ -519,8 +519,8 @@ class ImageBlock:
     }
 
     PRELOADED_FILES: Final[Mapping[Stage, str]] = {
-        Stage.LOCK: './lock.png',
-        Stage.KEY: './key.png',
+        Stage.LOCK: './images/lock.png',  # These are relative file paths loaded via fetch(), not via `main.toml`
+        Stage.KEY: './images/key.png',
     }
 
     PROCESS_OPTIONS: ClassVar[Mapping[Callable[..., Any], Sequence[str]]] = {}
