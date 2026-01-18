@@ -1,11 +1,10 @@
-Redo lock.png and key.png to add some spacing on the sides
 Provide proper instructions if loading fails: github pages, python web server, npm web server, turn off CORS
 Regenerate at options change
 Disable smooth if lock or key are loaded
 Add "Download All" button
 Make upload button translatable (hide <input ="type">)
 Test with offline PyScript
-Create build.py
+Create build.py, freeze dependency versions!
 <link rel="alternate" hreflang="ru" href="/ru/"> https://github.com/untra/polyglot
 File "might not support" bug against Pyodide
 Ask for assertions in PyScript

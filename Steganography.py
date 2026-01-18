@@ -65,6 +65,11 @@ MAPPING_MODE_PARAMETERS: Final[Sequence[Mapping[str, str | int]]] = (
 
 RESAMPLING = Resampling.LANCZOS
 
+FLIP = Transpose.FLIP_LEFT_RIGHT
+ROTATE_90 = Transpose.ROTATE_90
+ROTATE_180 = Transpose.ROTATE_180
+ROTATE_270 = Transpose.ROTATE_270
+
 N: Final[int] = 2 * 2  # Size of "unit" pixel block to operate on
 type Bit = Literal[0, 1]
 BitsN = tuple[Bit, Bit, Bit, Bit]  # Superclass for BitBlock
@@ -239,46 +244,48 @@ def finalizeImage(image: Image) -> None:
         image.format = PNG
 
 @typechecked
-async def processImage(image: Image,  # ToDo: Add second image as size source (instead of 'pad' argument), that would help resolving dependencies
+async def processImage(image: Image,
+                       padImage: Image | None = None,
                        *,
                        resizeFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
                        resizeWidth: int | None = None,
                        resizeHeight: int | None = None,
-                       pad: bool | None = None,
                        randomRotate: bool | None = None,
                        randomFlip: bool | None = None,
                        dither: bool | None = None) -> Image | None:
-    """Converts the arbitrary `Image` to 1-bit B&W with Alpha format."""
+    """
+    Converts the arbitrary `Image` to 1-bit B&W with Alpha format,
+    performing additional modifications during the process.
+    """
+    if resizeFactor is not None and (not isinstance(resizeFactor, int | float) or resizeFactor <= 0):
+        raise ValueError(f"Bad resizeFactor {resizeFactor}, must be positive int or float")
+    if resizeWidth is not None and (not isinstance(resizeWidth, int) or resizeWidth <= 0):
+        raise ValueError(f"Bad resizeWidth {resizeWidth}, must be positive int")
+    if resizeHeight is not None and (not isinstance(resizeHeight, int) or resizeHeight <= 0):
+        raise ValueError(f"Bad resizeHeight {resizeHeight}, must be positive int")
+    if sum(bool(v) for v in (padImage, resizeFactor, resizeWidth or resizeHeight)) > 1:
+        raise ValueError("Either padImage or resizeFactor or resizeWidth/resizeHeight can be specified")
     processed = grayscale = await to_thread(image.convert, GRAYSCALE)  # 8-bit grayscale
-    if resizeFactor not in (None, 1) or resizeWidth is not None or resizeHeight is not None:
-        if resizeFactor is not None and (not isinstance(resizeFactor, int | float) or resizeFactor <= 0):
-            raise ValueError(f"Bad resizeFactor {resizeFactor}, must be positive int or float")
-        if resizeWidth is not None and (not isinstance(resizeWidth, int) or resizeWidth <= 0):
-            raise ValueError(f"Bad resizeWidth {resizeWidth}, must be positive int")
-        if resizeHeight is not None and (not isinstance(resizeHeight, int) or resizeHeight <= 0):
-            raise ValueError(f"Bad resizeHeight {resizeHeight}, must be positive int")
-        if resizeFactor:
-            if pad or resizeWidth or resizeHeight:
-                raise ValueError("Either resizeFactor or resizeWidth/resizeHeight/pad can be specified")
-            processed = await to_thread(imageScale, processed, resizeFactor, RESAMPLING)
-        elif pad:
-            if not resizeWidth or not resizeHeight:
-                raise ValueError("pad requires both resizeWidth and resizeHeight to be specified")
-            processed = await to_thread(imagePad, processed, (resizeWidth, resizeHeight), RESAMPLING, color = 255)  # White background in grayscale
-        else:
-            if resizeWidth and not resizeHeight:
-                resizeHeight = round(float(image.height) * resizeWidth / image.width)
-            elif resizeHeight and not resizeWidth:
-                resizeWidth = round(float(image.width) * resizeHeight / image.height)
+    if padImage and padImage.size != processed.size:
+        processed = await to_thread(imagePad, processed, padImage.size, RESAMPLING, color = 255)  # White background in grayscale
+    elif resizeFactor and resizeFactor != 1:
+        processed = await to_thread(imageScale, processed, resizeFactor, RESAMPLING)
+    elif resizeWidth or resizeHeight:
+        if not resizeHeight:
             assert resizeWidth
+            resizeHeight = round(float(processed.height) * resizeWidth / image.width)
+        elif not resizeWidth:
             assert resizeHeight
+            resizeWidth = round(float(processed.width) * resizeHeight / image.height)
+        if (resizeWidth, resizeHeight) != processed.size:
             processed = await to_thread(processed.resize, (resizeWidth, resizeHeight), RESAMPLING)
-    if randomRotate:  # ToDo: Should we save rotate angle and flip bit somewhere?
-        processed = await to_thread(processed.rotate, choice(range(1, 359 + 1)), RESAMPLING, expand = True, fillcolor = 255)  # White background in grayscale
+    # ToDo: Should we save rotate angle and flip bit somewhere?
+    if randomRotate and (method := choice((None, ROTATE_90, ROTATE_180, ROTATE_270))) is not None:
+        processed = await to_thread(processed.transpose, method)
     if randomFlip and choice((False, True)):
-        processed = await to_thread(processed.transpose, Transpose.FLIP_LEFT_RIGHT)
+        processed = await to_thread(processed.transpose, FLIP)
     if image.mode == BW1 and hasAlpha(image) and processed is grayscale:
-        return None  # Indicates that processing was useless and original image could be used as it was
+        return None  # Indicates that no processing was actually performed and original image could be used as it was
     processed = await to_thread(processed.convert, BW1, dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)
     finalizeImage(processed)
     return processed

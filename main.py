@@ -453,12 +453,11 @@ class Options(Storage):
             return {}
         if isinstance(options, Mapping):
             ret = dict(options)
-            for (option, value) in tuple(options.items()):  # clone for safe modification
-                if value is None:
-                    if (value := self.get(option)) and value != super().__getattribute__(option):
-                        ret[option] = value
+            for (option, value) in options.items():
+                if value is None and (value := self.get(option)) and value != super().__getattribute__(option):
+                    ret[option] = value  # noqa: PERF403
             return ret
-        ret: dict[str, Any] = {}
+        ret = {}
         for option in options:
             if (value := self.get(option)) and value != super().__getattribute__(option):  # ToDo: Maybe instead of this hack we should have proper Option class, encapsulating type, default value, actual value and Element reference
                 ret[option] = value  # Only fill options with non-default values
@@ -589,8 +588,8 @@ class ImageBlock:
             else:
                 ret = await to_thread(processFunction, *sourceImages, **options)
             if ret is None:  # No changes were made, use original image
-                assert len(sourceImages) == 1 and sourceImages[0], sourceImages  # noqa: PT018
-                ret = sourceImages
+                assert len(sourceImages) in (1, 2) and sourceImages[0], sourceImages  # noqa: PT018
+                ret = sourceImages[:1]
             elif isinstance(ret, Image):
                 ret = (ret,)
             assert ret, repr(ret)
@@ -612,19 +611,13 @@ class ImageBlock:
         await cls.process(Stage.PROCESSED_SOURCE,
                               cls.worker.processImage, Stage.SOURCE,  # type: ignore[attr-defined]
                               options = cls.PROCESS_OPTIONS[processImage])
-        if processedSource := cls.imageBlocks[Stage.PROCESSED_SOURCE].image:
+        if cls.imageBlocks[Stage.PROCESSED_SOURCE].image:
             await cls.process(Stage.PROCESSED_LOCK,
-                              cls.worker.processImage, Stage.LOCK,  # type: ignore[attr-defined]
-                              options = {'pad': True,
-                                         'resizeWidth':  processedSource.width,  # ToDo: processedSource and processedSource.width ??
-                                         'resizeHeight': processedSource.height,
-                                         'dither': None})
+                              cls.worker.processImage, Stage.LOCK, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
+                              options = ('dither',))
             await cls.process(Stage.PROCESSED_KEY,
-                              cls.worker.processImage, Stage.KEY,  # type: ignore[attr-defined]
-                              options = {'pad': True,
-                                         'resizeWidth':  processedSource.width,
-                                         'resizeHeight': processedSource.height,
-                                         'dither': None})
+                              cls.worker.processImage, Stage.KEY, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
+                              options = ('dither',))
             await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
                               cls.worker.encrypt, Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),  # type: ignore[attr-defined]
                               options = cls.PROCESS_OPTIONS[encrypt])
@@ -792,8 +785,10 @@ class ImageBlock:
         elif filePath := self.PRELOADED_FILES.get(self.stage):
             log("Fetching preloaded file:", filePath)
             await repaint()
-            imageBytes = await fetch(filePath).arrayBuffer()  # type: ignore[attr-defined]
-            fileName = Path(filePath).name
+            (imageBytes, fileName) = (await fetch(filePath).arrayBuffer(), Path(filePath).name)  # type: ignore[attr-defined]
+            if imageBytes:
+                self.fileName = fileName
+                await self.saveImageToCache(imageBytes)
         else:
             (imageBytes, fileName) = (None, None)
         if imageBytes:
