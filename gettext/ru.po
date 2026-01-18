@@ -3,7 +3,6 @@
 #
 # Vasily Zakharov <vmzakhar@gmail.com>, 2026
 #
-#, fuzzy
 msgid ""
 msgstr ""
 "Project-Id-Version: Steganography 1.0\n"
@@ -22,97 +21,65 @@ msgstr ""
 "X-Poedit-SearchPath-1: index.html\n"
 "X-Poedit-SourceCharset: UTF-8\n"
 
-#: main.py:294
-msgid "GETTEXT_TEST"
-msgstr "GETTEXT_TEST_ru_RU"
+#: index.html:2
+msgid "en"
+msgstr "ru"
 
-#: main.py:578
-msgid "Processing image"
-msgstr "Обработка изображения"
+#: index.html:4 index.html:10 index.html:11 index.html:46
+msgid "Steganography"
+msgstr "Стёганография"
 
-#: main.py:726
-msgid "ERROR"
-msgstr "ОШИБКА"
-
-#: main.py:600
-msgid "processing image"
-msgstr "обработки изображения"
-
-#: main.py:798 main.py:828
-msgid "loading image"
-msgstr "загрузки изображения"
-
-#: main.py:758
-msgid "bytes"
-msgstr "байт"
-
-#: main.py:819
-msgid "Loading image"
-msgstr "Загрузка изображения"
-
-#: index.html:68
-msgid "clear the fields to impose no limit"
-msgstr "очистите поля для снятия ограничений"
-
-#: index.html:81
-msgid "only specify one value to constrain proportions"
-msgstr "указывайте только одно из значений, если хотите сохранить пропорции изображения"
-
-#: index.html:94
-msgid "specify one value only; smaller image would be placed in larger one randomly"
-msgstr "указывайте только одно из значений; меньшее изображение будет размещено внутри бо́льшего в случайном месте"
-
-#: index.html:58
-msgid "used to generate output file names"
-msgstr "используется для формирования имён генерируемых файлов"
+#: index.html:6
+msgid "Vasily Zakharov (vmzakhar@gmail.com"
+msgstr "Василий Захаров (vmzakhar@gmail.com"
 
 #: index.html:8 index.html:47
 msgid "Applied visual cryptography for Larp"
 msgstr "Прикладная визуальная криптография для РИ"
 
-#: index.html:117
-msgid "Click to remove this image from processing"
-msgstr "Нажмите, чтобы убрать это изображение из обработки"
+#: index.html:52
+msgid "Select language"
+msgstr "Выберите язык"
 
-#: index.html:122
-msgid "Click for full screen preview"
-msgstr "Нажмите, чтобы открыть изображение во весь экран"
+#: index.html:56
+msgid "Task name"
+msgstr "Имя задачи"
 
-#: index.html:125
-msgid "Click to download to your device"
-msgstr "Нажмите, чтобы скачать изображение на ваше устройство"
+#: index.html:58
+msgid "used to generate output file names"
+msgstr "используется для формирования имён генерируемых файлов"
 
-#: index.html:118
-msgid "Click to upload a file to process"
-msgstr "Нажмите, чтобы загрузить изображение для обработки"
+#: index.html:61
+msgid "Max preview size"
+msgstr "Максимальный размер просмотра"
 
-#: main.py:368 keep
-msgid "Do not use"
-msgstr "Не используйте"
+#: index.html:67 index.html:80 index.html:93
+msgid "px"
+msgstr "пикселов"
 
-#: main.py:246
-msgid "integer"
-msgstr "целое"
+#: index.html:68
+msgid "clear the fields to impose no limit"
+msgstr "очистите поля для снятия ограничений"
 
-#: main.py:253
-msgid "float"
-msgstr "десятичное"
+#: index.html:71
+msgid "Resize image to"
+msgstr "Масштабировать изображение в"
 
-#: index.html:126
-msgid "Download"
-msgstr "Скачать"
+#: index.html:74 index.html:87
+msgid "times or"
+msgstr "раз или до"
 
-#: index.html:103
-msgid "Employ dithering"
-msgstr "Использовать дизеринг"
+#: index.html:81
+msgid "only specify one value to constrain proportions"
+msgstr "указывайте только одно из значений, если хотите сохранить пропорции изображения"
 
-#: index.html:2
-msgid "en"
-msgstr "ru"
+#: index.html:84
+msgid "Resize lock to"
+msgstr "Масштабировать замок в"
 
-#: index.html:123
-msgid "preview"
-msgstr "просмотр"
+#: index.html:94
+msgid "specify one value only; smaller image would be placed in larger one randomly"
+msgstr "указывайте только одно из значений; меньшее изображение будет размещено внутри бо́льшего в случайном месте"
 
 #: index.html:97
 msgid "Random key rotation"
@@ -122,57 +89,73 @@ msgstr "Случайный поворот ключа"
 msgid "Random key flip"
 msgstr "Случайное отзеркаливание"
 
-#: index.html:117
-msgid "Remove"
-msgstr "Убрать"
+#: index.html:103
+msgid "Employ dithering"
+msgstr "Использовать дизеринг"
 
-#: index.html:112
-msgid "Reset options to defaults"
-msgstr "Сбросить настройки на значения по умолчанию"
+#: index.html:105
+msgid "emulates grayscale, but hardens decryption"
+msgstr "пытается передать оттенки серого, но усложняет дешифровку"
 
 #: index.html:108
 msgid "Smoother background"
 msgstr "Равномерный фон"
 
-#: index.html:4 index.html:10 index.html:11 index.html:46
-msgid "Steganography"
-msgstr "Стёганография"
+#: index.html:110
+msgid "doubles the image resolution"
+msgstr "удваивает размеры изображения"
 
-#: index.html:56
-msgid "Task name"
-msgstr "Имя задачи"
+#: index.html:112
+msgid "Reset options to defaults"
+msgstr "Сбросить настройки на значения по умолчанию"
+
+#: index.html:117
+msgid "Click to remove this image from processing"
+msgstr "Нажмите, чтобы убрать это изображение из обработки"
+
+#: index.html:117
+msgid "Remove"
+msgstr "Убрать"
+
+#: index.html:118
+msgid "Click to upload a file to process"
+msgstr "Нажмите, чтобы загрузить изображение для обработки"
+
+#: index.html:122
+msgid "Click for full screen preview"
+msgstr "Нажмите, чтобы открыть изображение во весь экран"
+
+#: index.html:123
+msgid "preview"
+msgstr "просмотр"
+
+#: index.html:125
+msgid "Click to download to your device"
+msgstr "Нажмите, чтобы скачать изображение на ваше устройство"
+
+#: index.html:126
+msgid "Download"
+msgstr "Скачать"
 
 #: index.html:139
 msgid "Vasily Zakharov"
 msgstr "Василий Захаров"
 
-#: index.html:52
-msgid "Select language"
-msgstr "Выберите язык"
+#: main.py:246
+msgid "integer"
+msgstr "целое"
 
-#: index.html:61
-msgid "Max preview size"
-msgstr "Максимальный размер просмотра"
+#: main.py:253
+msgid "float"
+msgstr "десятичное"
 
-#: index.html:71
-msgid "Resize image to"
-msgstr "Масштабировать изображение в"
+#: main.py:294
+msgid "GETTEXT_TEST"
+msgstr "GETTEXT_TEST_ru_RU"
 
-#: index.html:84
-msgid "Resize lock to"
-msgstr "Масштабировать замок в"
-
-#: index.html:74 index.html:87
-msgid "times or"
-msgstr "раз или до"
-
-#: index.html:67 index.html:80 index.html:93
-msgid "px"
-msgstr "пикселов"
-
-#: index.html:6
-msgid "Vasily Zakharov (vmzakhar@gmail.com"
-msgstr "Василий Захаров (vmzakhar@gmail.com"
+#: main.py:368 keep
+msgid "Do not use"
+msgstr "Не используйте"
 
 #: main.py:499
 msgid "Source image"
@@ -210,10 +193,26 @@ msgstr "Готовый ключ"
 msgid "Overlay test"
 msgstr "Тест наложения"
 
-#: index.html:105
-msgid "emulates grayscale, but hardens decryption"
-msgstr "пытается передать оттенки серого, но усложняет дешифровку"
+#: main.py:578
+msgid "Processing image"
+msgstr "Обработка изображения"
 
-#: index.html:110
-msgid "doubles the image resolution"
-msgstr "удваивает размеры изображения"
+#: main.py:600
+msgid "processing image"
+msgstr "обработки изображения"
+
+#: main.py:726
+msgid "ERROR"
+msgstr "ОШИБКА"
+
+#: main.py:758
+msgid "bytes"
+msgstr "байт"
+
+#: main.py:798 main.py:828
+msgid "loading image"
+msgstr "загрузки изображения"
+
+#: main.py:819
+msgid "Loading image"
+msgstr "Загрузка изображения"
