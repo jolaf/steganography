@@ -562,18 +562,21 @@ class ImageBlock:
                       targetStages: Stage | Iterable[Stage],
                       processFunction: Callable[..., Image | Sequence[Image] | None] | Callable[..., Awaitable[Image | Sequence[Image] | None]],
                       sourceStages: Stage | Iterable[Stage],
-                      optionalSourceStages: Stage | Iterable[Stage] | None = None,
                       *,
+                      optionalSourceStages: Stage | Iterable[Stage] | None = None,
+                      affectedStages: Stage | Iterable[Stage] | None = None,
                       options: Iterable[str] | Mapping[str, Any] = ()) -> None:
         sources = tuple(cls.imageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.imageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
-        if any(not source.image for source in sources):
-            for t in targets:
-                await t.removeImage()  # ToDo: Make sure images further down the chain get removed too
-            await repaint()
-            return
         optionalSources = tuple(cls.imageBlocks[stage] for stage in ((optionalSourceStages,) if isinstance(optionalSourceStages, Stage) else optionalSourceStages or ()))
-        if not any(source.dirty for source in chain(sources, optionalSources)):
+        if not any(source.dirty for source in chain(sources, optionalSources)) and \
+               all(target.image for target in targets):
+            return
+        affected = tuple(cls.imageBlocks[stage] for stage in ((affectedStages,) if isinstance(affectedStages, Stage) else affectedStages or ()))
+        for t in chain(targets, affected):
+            t.clean()
+            await repaint()
+        if not all(source.image for source in sources):
             return
         log(f"Processing {', '.join(source.stage.name for source in chain(sources, optionalSources))} => {', '.join(target.stage.name for target in targets)}")
         for t in targets:
@@ -610,24 +613,26 @@ class ImageBlock:
         assert cls.worker
         await cls.process(Stage.PROCESSED_SOURCE,
                               cls.worker.processImage, Stage.SOURCE,  # type: ignore[attr-defined]
+                              affectedStages = (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
                               options = cls.PROCESS_OPTIONS[processImage])
-        if processedSource := cls.imageBlocks[Stage.PROCESSED_SOURCE].image:
-            await cls.process(Stage.PROCESSED_LOCK,
-                              cls.worker.processImage, Stage.LOCK,  # type: ignore[attr-defined]
-                              options = {'padWidth':  processedSource.width,  # ToDo: processedSource and processedSource.width ??
-                                         'padHeight': processedSource.height,
-                                         'dither': None})
-            await cls.process(Stage.PROCESSED_KEY,
-                              cls.worker.processImage, Stage.KEY,  # type: ignore[attr-defined]
-                              options = {'padWidth':  processedSource.width,
-                                         'padHeight': processedSource.height,
-                                         'dither': None})
-            await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
-                              cls.worker.encrypt, Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),  # type: ignore[attr-defined]
-                              options = cls.PROCESS_OPTIONS[encrypt])
-            await cls.process(Stage.KEY_OVER_LOCK_TEST,
-                              cls.worker.overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),  # type: ignore[attr-defined]
-                              options = cls.PROCESS_OPTIONS[overlay])  # ToDo: Somehow handle random rotation and location
+        processedSource = cls.imageBlocks[Stage.PROCESSED_SOURCE].image
+        await cls.process(Stage.PROCESSED_LOCK,
+                          cls.worker.processImage, Stage.LOCK,  # type: ignore[attr-defined]
+                          options = {'padWidth': processedSource and processedSource.width,
+                                     'padHeight': processedSource and processedSource.height,
+                                     'dither': None})
+        await cls.process(Stage.PROCESSED_KEY,
+                          cls.worker.processImage, Stage.KEY,  # type: ignore[attr-defined]
+                          options = {'padWidth': processedSource and processedSource.width,
+                                     'padHeight': processedSource and processedSource.height,
+                                     'dither': None})
+        await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
+                          cls.worker.encrypt, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
+                          optionalSourceStages = (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
+                          options = cls.PROCESS_OPTIONS[encrypt])
+        await cls.process(Stage.KEY_OVER_LOCK_TEST,
+                          cls.worker.overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),  # type: ignore[attr-defined]
+                          options = cls.PROCESS_OPTIONS[overlay])  # ToDo: Somehow handle random rotation and location
         for imageBlock in cls.imageBlocks.values():
             imageBlock.dirty = False
         log("Completed pipeline")
@@ -736,8 +741,8 @@ class ImageBlock:
 
     def clean(self, description: str | None = None) -> None:
         self.setURL()
-        self.dirty = bool(self.image)
         self.image = None
+        self.dirty = True
         self.hide('display-block')
         self.hide('remove')
         if description:
