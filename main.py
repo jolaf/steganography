@@ -588,8 +588,8 @@ class ImageBlock:
             else:
                 ret = await to_thread(processFunction, *sourceImages, **options)
             if ret is None:  # No changes were made, use original image
-                assert len(sourceImages) in (1, 2) and sourceImages[0], sourceImages  # noqa: PT018
-                ret = sourceImages[:1]
+                assert len(sourceImages) == 1 and sourceImages[0], sourceImages  # noqa: PT018
+                ret = sourceImages
             elif isinstance(ret, Image):
                 ret = (ret,)
             assert ret, repr(ret)
@@ -611,13 +611,17 @@ class ImageBlock:
         await cls.process(Stage.PROCESSED_SOURCE,
                               cls.worker.processImage, Stage.SOURCE,  # type: ignore[attr-defined]
                               options = cls.PROCESS_OPTIONS[processImage])
-        if cls.imageBlocks[Stage.PROCESSED_SOURCE].image:
+        if processedSource := cls.imageBlocks[Stage.PROCESSED_SOURCE].image:
             await cls.process(Stage.PROCESSED_LOCK,
-                              cls.worker.processImage, Stage.LOCK, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
-                              options = ('dither',))
+                              cls.worker.processImage, Stage.LOCK,  # type: ignore[attr-defined]
+                              options = {'padWidth':  processedSource.width,  # ToDo: processedSource and processedSource.width ??
+                                         'padHeight': processedSource.height,
+                                         'dither': None})
             await cls.process(Stage.PROCESSED_KEY,
-                              cls.worker.processImage, Stage.KEY, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
-                              options = ('dither',))
+                              cls.worker.processImage, Stage.KEY,  # type: ignore[attr-defined]
+                              options = {'padWidth':  processedSource.width,
+                                         'padHeight': processedSource.height,
+                                         'dither': None})
             await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
                               cls.worker.encrypt, Stage.PROCESSED_SOURCE, (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),  # type: ignore[attr-defined]
                               options = cls.PROCESS_OPTIONS[encrypt])

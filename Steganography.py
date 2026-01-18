@@ -245,11 +245,12 @@ def finalizeImage(image: Image) -> None:
 
 @typechecked
 async def processImage(image: Image,
-                       padImage: Image | None = None,
                        *,
                        resizeFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
                        resizeWidth: int | None = None,
                        resizeHeight: int | None = None,
+                       padWidth: int | None = None,
+                       padHeight: int | None = None,
                        randomRotate: bool | None = None,
                        randomFlip: bool | None = None,
                        dither: bool | None = None) -> Image | None:
@@ -263,12 +264,16 @@ async def processImage(image: Image,
         raise ValueError(f"Bad resizeWidth {resizeWidth}, must be positive int")
     if resizeHeight is not None and (not isinstance(resizeHeight, int) or resizeHeight <= 0):
         raise ValueError(f"Bad resizeHeight {resizeHeight}, must be positive int")
-    if sum(bool(v) for v in (padImage, resizeFactor, resizeWidth or resizeHeight)) > 1:
-        raise ValueError("Either padImage or resizeFactor or resizeWidth/resizeHeight can be specified")
+    if padWidth is not None and (not isinstance(padWidth, int) or padWidth <= 0):
+        raise ValueError(f"Bad padWidth {padWidth}, must be positive int")
+    if padHeight is not None and (not isinstance(padHeight, int) or padHeight <= 0):
+        raise ValueError(f"Bad padHeight {padHeight}, must be positive int")
+    if bool(padWidth) ^ bool(padHeight):
+        raise ValueError("Either both padWidth and padHeight should be specified, or none of them")
+    if sum(bool(v) for v in (resizeFactor, resizeWidth or resizeHeight, padWidth or padHeight)) > 1:
+        raise ValueError("Either resizeFactor or resizeWidth/resizeHeight or padWidth/padHeight can be specified")
     processed = grayscale = await to_thread(image.convert, GRAYSCALE)  # 8-bit grayscale
-    if padImage and padImage.size != processed.size:
-        processed = await to_thread(imagePad, processed, padImage.size, RESAMPLING, color = 255)  # White background in grayscale
-    elif resizeFactor and resizeFactor != 1:
+    if resizeFactor and resizeFactor != 1:
         processed = await to_thread(imageScale, processed, resizeFactor, RESAMPLING)
     elif resizeWidth or resizeHeight:
         if not resizeHeight:
@@ -279,6 +284,8 @@ async def processImage(image: Image,
             resizeWidth = round(float(processed.width) * resizeHeight / image.height)
         if (resizeWidth, resizeHeight) != processed.size:
             processed = await to_thread(processed.resize, (resizeWidth, resizeHeight), RESAMPLING)
+    elif padWidth and padHeight and (padWidth, padHeight) != processed.size:
+        processed = await to_thread(imagePad, processed, (padWidth, padHeight), RESAMPLING, color = 255)  # White background in grayscale
     # ToDo: Should we save rotate angle and flip bit somewhere?
     if randomRotate and (method := choice((None, ROTATE_90, ROTATE_180, ROTATE_270))) is not None:
         processed = await to_thread(processed.transpose, method)

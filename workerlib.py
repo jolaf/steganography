@@ -48,6 +48,13 @@
 # If you need access to actual `worker` object, it's there as `worker.worker`.
 #
 
+# ToDo: [adapters]
+# "module" = ["type", "encoder", "decoder" ]
+# # All three would be imported from the specified module, without eval()!
+# # type - name of a class, will be used with isinstance() check to identify that your encoder has to be employed
+# # encoder - name of a function or coroutine that converts an instance of your class to some type that's suitable for JS structural clone (link).
+# # decoder - will be used on a JsProxy object, should identify if this is an encoder()-generated representation of type and return its instance, or return None, if that JsProxy object is not a representation of type.
+
 from collections.abc import Coroutine, Buffer, Callable, Iterable, Mapping, Sequence
 from functools import wraps
 from importlib import import_module
