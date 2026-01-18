@@ -302,7 +302,7 @@ else:  ##  MAIN THREAD
             self.worker = worker
 
     @_typechecked
-    def _mainSerialized(func: _CoroutineFunction, treatAs: _FunctionOrCoroutine | str | None = None) -> _CoroutineFunction:
+    def _mainSerialized(func: _CoroutineFunction, looksLike: _FunctionOrCoroutine | str | None = None) -> _CoroutineFunction:
         @_typechecked
         async def mainSerializedWrapper(*args: Any, **kwargs: Any) -> Any:
             assert isinstance(func, JsProxy), type(func)
@@ -312,11 +312,11 @@ else:  ##  MAIN THREAD
             assert isinstance(kwargs, dict), type(kwargs)
             ret = await func(*args, **kwargs)
             return await _to_py(ret)
-        if treatAs and isfunction(treatAs) or iscoroutinefunction(treatAs):
-            return wraps(treatAs)(mainSerializedWrapper)
+        if looksLike and (isfunction(looksLike) or iscoroutinefunction(looksLike)):
+            return wraps(looksLike)(mainSerializedWrapper)
         ret = wraps(func)(mainSerializedWrapper)
-        if treatAs and isinstance(treatAs, str):
-            ret.__name__ = treatAs
+        if looksLike and isinstance(looksLike, str):
+            ret.__name__ = looksLike
         return ret
 
     @_typechecked
