@@ -302,8 +302,7 @@ else:  ##  MAIN THREAD
             self.worker = worker
 
     @_typechecked
-    def _mainSerialized(func: _CoroutineFunction) -> _CoroutineFunction:
-        @wraps(func)
+    def _mainSerialized(func: _CoroutineFunction, treatAs: _FunctionOrCoroutine | str | None = None) -> _CoroutineFunction:
         @_typechecked
         async def mainSerializedWrapper(*args: Any, **kwargs: Any) -> Any:
             assert isinstance(func, JsProxy), type(func)
@@ -313,14 +312,19 @@ else:  ##  MAIN THREAD
             assert isinstance(kwargs, dict), type(kwargs)
             ret = await func(*args, **kwargs)
             return await _to_py(ret)
-        return mainSerializedWrapper
+        if treatAs and isfunction(treatAs) or iscoroutinefunction(treatAs):
+            return wraps(treatAs)(mainSerializedWrapper)
+        ret = wraps(func)(mainSerializedWrapper)
+        if treatAs and isinstance(treatAs, str):
+            ret.__name__ = treatAs
+        return ret
 
     @_typechecked
     async def connectToWorker(workerName: str) -> Worker:
         _log(f'Looking for worker named "{workerName}"')
         worker = await workers[workerName]
         _log("Got worker, connecting")
-        data = await _mainSerialized(worker._connectFromMain)(_CONNECT_REQUEST)  # noqa: SLF001  # pylint: disable=protected-access
+        data = await _mainSerialized(worker._connectFromMain, '_connectFromMain')(_CONNECT_REQUEST)  # noqa: SLF001  # pylint: disable=protected-access
         if not data or data[0] != _CONNECT_RESPONSE:
             _error(f"Connection to worker is misconfigured, can't continue: {type(data)}: {data!r}")
         ret = Worker(worker)  # We can't return `worker`, as it is a `JsProxy` and we can't reassign its fields, `setattr()` is not working, so we have to create a class of our own to store `wrap()`ped functions.
@@ -328,7 +332,7 @@ else:  ##  MAIN THREAD
             assert funcName != connectToWorker.__name__
             if not (func := getattr(worker, funcName, None)):
                 _error(f"Function {funcName} is not exported from the worker")
-            setattr(ret, funcName, _mainSerialized(func))
+            setattr(ret, funcName, _mainSerialized(func, funcName))
         _log("Connected to worker")
         return ret
 
