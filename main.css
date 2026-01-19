@@ -140,13 +140,8 @@ input:user-invalid {
     background-color: white;
 }
 
-.image-upload:hover,
-.image-download-block:hover {
-    color: blue;
-}
-
 .image-display:hover {
-    border-color: blue;
+    border-color: blue !important;
 }
 
 .image-download-link {

@@ -423,11 +423,7 @@ class Options(Storage):
 }}
 ''' + ('''
 #image-display-generated-key {
-    border: 1px solid red;
-}
-
-#image-display-generated-key:hover {
-    border: 1px solid blue;
+    border-color: red;
 }
 ''' if self.randomRotate or self.randomFlip else ''))
 
@@ -701,6 +697,11 @@ class ImageBlock:
             if (files := uploadTag.files).length:
                 file = files.item(0)  # JS FileList API
                 await self.uploadFile(file.name, file)
+
+        @when(CLICK, self.getElement('upload-button'))
+        @typechecked
+        async def uploadClickEventHandler(_e: Event) -> None:
+            uploadTag.click()
 
         @when(CLICK, self.getElement('remove'))
         @typechecked

@@ -25,7 +25,7 @@ msgstr ""
 msgid "en"
 msgstr "ru"
 
-#: index.html:4 index.html:10 index.html:11 index.html:46
+#: index.html:4 index.html:10 index.html:11 index.html:47
 msgid "Steganography"
 msgstr "Стёганография"
 
@@ -33,115 +33,119 @@ msgstr "Стёганография"
 msgid "Vasily Zakharov (vmzakhar@gmail.com"
 msgstr "Василий Захаров (vmzakhar@gmail.com"
 
-#: index.html:8 index.html:47
+#: index.html:8 index.html:48
 msgid "Applied visual cryptography for Larp"
 msgstr "Прикладная визуальная криптография для РИ"
 
-#: index.html:52
+#: index.html:53
 msgid "Select language"
 msgstr "Выберите язык"
 
-#: index.html:56
+#: index.html:57
 msgid "Task name"
 msgstr "Имя задачи"
 
-#: index.html:58
+#: index.html:59
 msgid "used to generate output file names"
 msgstr "используется для формирования имён генерируемых файлов"
 
-#: index.html:61
+#: index.html:62
 msgid "Max preview size"
 msgstr "Максимальный размер просмотра"
 
-#: index.html:67 index.html:80 index.html:93
+#: index.html:68 index.html:81 index.html:94
 msgid "px"
 msgstr "пикселов"
 
-#: index.html:68
+#: index.html:69
 msgid "clear the fields to impose no limit"
 msgstr "очистите поля для снятия ограничений"
 
-#: index.html:71
+#: index.html:72
 msgid "Resize image to"
 msgstr "Масштабировать изображение в"
 
-#: index.html:74 index.html:87
+#: index.html:75 index.html:88
 msgid "times or"
 msgstr "раз или до"
 
-#: index.html:81
+#: index.html:82
 msgid "only specify one value to constrain proportions"
 msgstr "указывайте только одно из значений, если хотите сохранить пропорции изображения"
 
-#: index.html:84
+#: index.html:85
 msgid "Resize lock to"
 msgstr "Масштабировать замок в"
 
-#: index.html:94
+#: index.html:95
 msgid "specify one value only; smaller image would be placed in larger one randomly"
 msgstr "указывайте только одно из значений; меньшее изображение будет размещено внутри бо́льшего в случайном месте"
 
-#: index.html:97
+#: index.html:98
 msgid "Random key rotation"
 msgstr "Случайный поворот ключа"
 
-#: index.html:99
+#: index.html:100
 msgid "Random key flip"
 msgstr "Случайное отзеркаливание"
 
-#: index.html:103
+#: index.html:104
 msgid "Employ dithering"
 msgstr "Использовать дизеринг"
 
-#: index.html:105
+#: index.html:106
 msgid "emulates grayscale, but hardens decryption"
 msgstr "пытается передать оттенки серого, но усложняет дешифровку"
 
-#: index.html:108
+#: index.html:109
 msgid "Smoother background"
 msgstr "Равномерный фон"
 
-#: index.html:110
+#: index.html:111
 msgid "doubles the image resolution"
 msgstr "удваивает размеры изображения"
 
-#: index.html:112
+#: index.html:113
 msgid "Reset options to defaults"
 msgstr "Сбросить настройки на значения по умолчанию"
 
-#: index.html:117
+#: index.html:118
 msgid "Click to remove this image from processing"
 msgstr "Нажмите, чтобы убрать это изображение из обработки"
 
-#: index.html:117
+#: index.html:118
 msgid "Remove"
 msgstr "Убрать"
 
-#: index.html:118
+#: index.html:119
 msgid "Click to upload a file to process"
 msgstr "Нажмите, чтобы загрузить изображение для обработки"
 
-#: index.html:122
-msgid "Click for full screen preview"
-msgstr "Нажмите, чтобы открыть изображение во весь экран"
+#: index.html:119
+msgid "Upload"
+msgstr "Загрузить"
 
-#: index.html:123
+#: index.html:124
+msgid "Click for full screen preview"
+msgstr "Нажмите, чтобы открыть изображение в новой вкладке"
+
+#: index.html:125
 msgid "preview"
 msgstr "просмотр"
 
-#: index.html:125
+#: index.html:127
 msgid "Click to download to your device"
 msgstr "Нажмите, чтобы скачать изображение на ваше устройство"
 
-#: index.html:126
+#: index.html:128
 msgid "Download"
 msgstr "Скачать"
 
-#: index.html:139
+#: index.html:141
 msgid "Vasily Zakharov"
 msgstr "Василий Захаров"
 
-#: index.html:139
+#: index.html:141
 msgid "Victor Kurush"
 msgstr "Виктор Куруш"
 
@@ -161,62 +165,62 @@ msgstr "GETTEXT_TEST_ru_RU"
 msgid "Do not use"
 msgstr "Не используйте"
 
-#: main.py:499
+#: main.py:504
 msgid "Source image"
 msgstr "Исходный рисунок"
 
-#: main.py:500
+#: main.py:505
 msgid "Lock mask"
 msgstr "Маска замка́"
 
-#: main.py:501
+#: main.py:506
 msgid "Key mask"
 msgstr "Маска ключа"
 
-#: main.py:502
+#: main.py:507
 msgid "Processed source"
 msgstr "Обработанный исходник"
 
-#: main.py:503
+#: main.py:508
 msgid "Processed lock mask"
 msgstr "Обработанная МЗ"
 
-#: main.py:504
+#: main.py:509
 msgid "Processed key mask"
 msgstr "Обработанная МК"
 
-#: main.py:505
+#: main.py:510
 msgid "Generated lock"
 msgstr "Готовый замо́к"
 
-#: main.py:506
+#: main.py:511
 msgid "Generated key"
 msgstr "Готовый ключ"
 
-#: main.py:507
+#: main.py:512
 msgid "Overlay test"
 msgstr "Тест наложения"
 
-#: main.py:578
+#: main.py:588
 msgid "Processing image"
 msgstr "Обработка изображения"
 
-#: main.py:604
+#: main.py:614
 msgid "processing image"
 msgstr "обработки изображения"
 
-#: main.py:736
+#: main.py:751
 msgid "ERROR"
 msgstr "ОШИБКА"
 
-#: main.py:768
+#: main.py:783
 msgid "bytes"
 msgstr "байт"
 
-#: main.py:808 main.py:838
+#: main.py:823 main.py:853
 msgid "loading image"
 msgstr "загрузки изображения"
 
-#: main.py:829
+#: main.py:844
 msgid "Loading image"
 msgstr "Загрузка изображения"
