@@ -110,7 +110,30 @@ def _error(message: str) -> NoReturn:
     raise RuntimeError(f"{_PREFIX} {message}")
 
 @_typechecked
-def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str]]) -> Iterator[_Adapter]:
+def _importModule(moduleName: str) -> ModuleType:
+    if (module := globals().get(moduleName)) is None:
+        _log(f"Importing module {moduleName}")
+        module = import_module(moduleName)
+    return module
+
+@_typechecked
+def _importFromModule(module: str | ModuleType, qualNames: str | Iterable[str]) -> Iterator[Any]:
+    if isinstance(module, str):
+        module = _importModule(module)
+    if isinstance(qualNames, str):
+        qualNames = (qualNames,)
+    _log(f"Importing from module {module.__name__}: {', '.join(name for name in qualNames if name != 'None')}")
+    for qualName in qualNames:
+        if qualName == 'None':
+            yield None
+            continue
+        obj = module
+        for name in qualName.split('.'):
+            obj = getattr(obj, name)
+        yield obj
+
+@_typechecked
+def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str]], allowSubSequence: bool = True) -> Iterator[_Adapter]:
     if not isinstance(names, Sequence):
         _error(f"""Bad adapter tuple type {type(names)} for module {module.__name__}""")
     if not names:
@@ -118,8 +141,7 @@ def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str
     if isinstance(names[0], str):
         if len(names) != 3:
             _error(f"""Bad adapter settings for module {module.__name__}, must be '["className", "encoderFunction", "decoderFunction"]', got {names!r}""")
-        _log(f"Importing from module {module.__name__}: {', '.join(cast(str, name) for name in names if name != 'None')}")
-        (cls, encoder, decoder) = (None if name == 'None' else getattr(module, cast(str, name)) for name in names)
+        (cls, encoder, decoder) = _importFromModule(module, cast(Sequence[str], names))
         if not isinstance(cls, type):
             _error(f"Bad adapter class {names[0]} for module {module.__name__}, must be type, got {type(cls)}")
         if encoder is not None and not isfunction(encoder) and not iscoroutinefunction(encoder):
@@ -128,9 +150,11 @@ def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str
             _error(f'Bad adapter encoder {names[2]} for module {module.__name__}, must be function or coroutine or "None", got {type(decoder)}')
         _log(f"Adapter created: {decoder} => {cls} => {encoder}")
         yield (cls, encoder, decoder)
-    else:
+    elif allowSubSequence:
         for subSequence in names:
-            yield from _adaptersFromSequence(module, subSequence)
+            yield from _adaptersFromSequence(module, subSequence, allowSubSequence = False)
+    else:
+        _error("""Adapter specification should be either [strings] or [[strings], ...], third level of inclusion is not needed'""")
 
 @_typechecked
 def _adaptersFrom(mapping: Mapping[str, Sequence[str | Sequence[str]]] | None) -> None:
@@ -138,9 +162,7 @@ def _adaptersFrom(mapping: Mapping[str, Sequence[str | Sequence[str]]] | None) -
         return
     adapters: list[_Adapter] = []
     for (moduleName, names) in mapping.items():
-        if (module := globals().get(moduleName)) is None:
-            _log(f"Importing module {moduleName}")
-            module = import_module(moduleName)
+        module = _importModule(moduleName)
         adapters.extend(_adaptersFromSequence(module, names))
     global __adapters__  # noqa: PLW0603  # pylint: disable=global-statement
     __adapters__ = tuple(adapters)
@@ -153,7 +175,7 @@ async def _to_js(obj: Any) -> Any:
                 value = await encoder(obj) if iscoroutinefunction(encoder) else encoder(obj)
             else:
                 value = obj  # Trying to pass object as is, hoping it would work, like for Enums
-            return to_js((_ADAPTER_PREFIX + cls.__name__, value))  # Encoded class name is NOT the name of type of object being encoded, but name of the adapter to use to decode the object on the other side
+            return to_js((_ADAPTER_PREFIX + cls.__name__, value))  # Encoded class name is NOT the name of type of object being encoded, but the name of the adapter to use to decode the object on the other side
     if not isinstance(obj, _TransportSafe):
         _error(f"No adapter found for class {type(obj)}, and transport layer (JavaScript structured clone) would not accept it as is, see https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm")
     if isinstance(obj, str | Buffer):
@@ -282,11 +304,8 @@ if RUNNING_IN_WORKER:  ##
 
         if mapping:
             for (moduleName, funcNames) in mapping.items():
-                _log(f"Importing from module {moduleName}: {', '.join(funcNames)}")
-                module = import_module(moduleName)
-
-                for funcName in funcNames:
-                    target[funcName] = _wrap(getattr(module, funcName))
+                for (funcName, func) in zip(funcNames, _importFromModule(moduleName, funcNames), strict = True):
+                    target[funcName] = _wrap(func)
                     exportNames.append(funcName)
         else:
             _log("WARNING: no functions found to export, check `[exports]` section in the config")
