@@ -157,15 +157,14 @@ def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str
         _error("""Adapter specification should be either [strings] or [[strings], ...], third level of inclusion is not needed'""")
 
 @_typechecked
-def _adaptersFrom(mapping: Mapping[str, Sequence[str | Sequence[str]]] | None) -> None:
+def _adaptersFrom(mapping: Mapping[str, Sequence[str | Sequence[str]]] | None) -> Sequence[_Adapter]:
     if not mapping:
-        return
+        return ()
     adapters: list[_Adapter] = []
     for (moduleName, names) in mapping.items():
         module = _importModule(moduleName)
         adapters.extend(_adaptersFromSequence(module, names))
-    global __adapters__  # noqa: PLW0603  # pylint: disable=global-statement
-    __adapters__ = tuple(adapters)
+    return tuple(adapters)
 
 @_typechecked
 async def _to_js(obj: Any) -> Any:
@@ -313,7 +312,7 @@ if RUNNING_IN_WORKER:  ##
         target[__EXPORT__] = tuple(exportNames)
         _log(f"Started worker, providing functions: {', '.join(name for name in exportNames if name != _connectFromMain.__name__)}")
 
-    _adaptersFrom(config.get(_ADAPTERS_SECTION))
+    __adapters__ = _adaptersFrom(config.get(_ADAPTERS_SECTION))
 
     if __name__ == '__main__':
         # If this module itself is used as a worker, it imports modules mentioned in config and exports them automatically
@@ -374,5 +373,5 @@ else:  ##  MAIN THREAD
         return ret
 
     assert not hasattr(globals(), __EXPORT__), getattr(globals(), __EXPORT__)
-    _adaptersFrom(config.get(_ADAPTERS_SECTION))
+    __adapters__ = _adaptersFrom(config.get(_ADAPTERS_SECTION))
     __all__ = (Worker.__name__, connectToWorker.__name__)  # noqa: PLE0604
