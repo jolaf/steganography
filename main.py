@@ -98,7 +98,7 @@ from PIL import __version__ as pilVersion
 from workerlib import connectToWorker, Worker
 
 from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, Image, Transpose
-from Steganography import encrypt, overlay, processImage  # For extracting options only
+from Steganography import encrypt, overlay, prepareImage  # For extracting options only
 
 TagAttrValue = str | int | float | bool
 
@@ -541,7 +541,7 @@ class ImageBlock:
     async def init(cls) -> None:
         assert cls.options is None, type(cls.options)  # This method should only be called once
         cls.options = cast(Options, await storage('steganography', storage_class = Options))
-        cls.PROCESS_OPTIONS = {func: cls.extractOptions(func) for func in (processImage, encrypt, overlay)}
+        cls.PROCESS_OPTIONS = {func: cls.extractOptions(func) for func in (encrypt, overlay, prepareImage)}
         for stage in Stage:
             cls.imageBlocks[stage] = ImageBlock(stage)
         for (stage, block) in cls.imageBlocks.items():
@@ -623,13 +623,13 @@ class ImageBlock:
         log("Started pipeline")
         assert cls.worker
         ret = await cls.process(Stage.PROCESSED_SOURCE,
-                                cls.worker.processImage, Stage.SOURCE,  # type: ignore[attr-defined]
-                                options = cls.PROCESS_OPTIONS[processImage])
+                                cls.worker.prepareImage, Stage.SOURCE,  # type: ignore[attr-defined]
+                                options = cls.PROCESS_OPTIONS[prepareImage])
         ret = await cls.process(Stage.PROCESSED_LOCK,
-                                cls.worker.processImage, Stage.LOCK,  # type: ignore[attr-defined]
+                                cls.worker.prepareImage, Stage.LOCK,  # type: ignore[attr-defined]
                                 options = {'dither': None})
         ret = await cls.process(Stage.PROCESSED_KEY,
-                                cls.worker.processImage, Stage.KEY,  # type: ignore[attr-defined]
+                                cls.worker.prepareImage, Stage.KEY,  # type: ignore[attr-defined]
                                 options = {'dither': None})
         ret = await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
                                 cls.worker.encrypt, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
