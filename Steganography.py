@@ -262,11 +262,11 @@ async def prepareImage(image: Image,
     performing additional modifications during the process.
     """
     if resizeFactor is not None and (not isinstance(resizeFactor, int | float) or resizeFactor <= 0):
-        raise ValueError(f"Bad resizeFactor {resizeFactor}, must be positive int or float")
+        raise ValueError(f"Bad resizeFactor {resizeFactor}, must be a positive int or float")
     if resizeWidth is not None and (not isinstance(resizeWidth, int) or resizeWidth <= 0):
-        raise ValueError(f"Bad resizeWidth {resizeWidth}, must be positive int")
+        raise ValueError(f"Bad resizeWidth {resizeWidth}, must be a positive int")
     if resizeHeight is not None and (not isinstance(resizeHeight, int) or resizeHeight <= 0):
-        raise ValueError(f"Bad resizeHeight {resizeHeight}, must be positive int")
+        raise ValueError(f"Bad resizeHeight {resizeHeight}, must be a positive int")
     if resizeFactor and (resizeWidth or resizeHeight):
         raise ValueError("Either resizeFactor or resizeWidth/resizeHeight can be specified")
     processed = grayscale = await to_thread(image.convert, GRAYSCALE)  # 8-bit grayscale
@@ -313,8 +313,9 @@ async def encrypt(source: Image,
     # PIL/NumPy array indexes are `y` first, `x` second
     # Color False/0 is black, and True/1 is white/transparent
     if lockMask or keyMask:
-        if lockMask and lockMask.size != source.size:
-            lockMask = await to_thread(imagePad, lockMask, source.size, RESAMPLING, color = 255)  # White background in grayscale
+        if lockMask:
+            if lockMask.size != source.size:
+                lockMask = await to_thread(imagePad, lockMask, source.size, RESAMPLING, color = 255)  # White background in grayscale
         else:
             lockMask = imageNew(BW1, source.size, 1)  # white/transparent background
         if keyMask:
