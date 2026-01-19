@@ -407,7 +407,7 @@ class Options(Storage):
                 element.value = self.UNSET if newValue == typeDefaultValue else newValue
             elif valueType is str:
                 element.value = newValue  # Write processed value back to the input field
-            if name in ('maxPreviewWidth', 'maxPreviewHeight'):  # pylint: disable=use-set-for-membership
+            if name in ('maxPreviewWidth', 'maxPreviewHeight', 'randomRotate', 'randomFlip'):  # pylint: disable=use-set-for-membership
                 self.updateStyle()
             await self.sync()  # Make sure database is really updated
             if name == 'language':
@@ -421,7 +421,15 @@ class Options(Storage):
     max-width: {f'{self.maxPreviewWidth}px' if self.maxPreviewWidth else 'none'};
     max-height: {f'{self.maxPreviewHeight}px' if self.maxPreviewHeight else 'none'};
 }}
-        ''')
+''' + ('''
+#image-display-generated-key {
+    border: 1px solid red;
+}
+
+#image-display-generated-key:hover {
+    border: 1px solid blue;
+}
+''' if self.randomRotate or self.randomFlip else ''))
 
     async def saveFile(self, name: str, data: Buffer | None, fileName: str | None = None) -> None:
         if data:
