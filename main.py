@@ -9,7 +9,7 @@ from asyncio import create_task, get_running_loop, sleep, to_thread, AbstractEve
 from collections.abc import Awaitable, Buffer, Callable, Iterable, Iterator, Mapping, Sequence  # beartype needs these things in runtime
 from contextlib import suppress
 from datetime import datetime
-from enum import Enum
+from enum import auto, verify, Enum, CONTINUOUS, UNIQUE
 from gettext import translation, GNUTranslations
 from inspect import iscoroutinefunction, signature
 from itertools import chain
@@ -486,16 +486,17 @@ class Options(Storage):
         super().__setattr__(name, value)
 
 @typechecked
+@verify(UNIQUE, CONTINUOUS)
 class Stage(Enum):
-    SOURCE = 1
-    LOCK = 2
-    KEY = 3
-    PROCESSED_SOURCE = 4
-    PROCESSED_LOCK = 5
-    PROCESSED_KEY = 6
-    GENERATED_LOCK = 7
-    GENERATED_KEY = 8
-    KEY_OVER_LOCK_TEST = 9
+    SOURCE = auto()
+    LOCK = auto()
+    KEY = auto()
+    PROCESSED_SOURCE = auto()
+    PROCESSED_LOCK = auto()
+    PROCESSED_KEY = auto()
+    GENERATED_LOCK = auto()
+    GENERATED_KEY = auto()
+    KEY_OVER_LOCK_TEST = auto()
 
 @typechecked
 class ImageBlock:
