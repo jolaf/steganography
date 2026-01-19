@@ -55,15 +55,17 @@
 # # encoder - name of a function or coroutine that converts an instance of your class to some type that's suitable for JS structural clone (link).
 # # decoder - will be used on a JsProxy object, should identify if this is an encoder()-generated representation of type and return its instance, or return None, if that JsProxy object is not a representation of type.
 
-from collections.abc import Coroutine, Buffer, Callable, Iterable, Mapping, Sequence
+from collections.abc import Coroutine, Buffer, Callable, Iterable, Iterator, Mapping, Sequence
 from functools import wraps
 from importlib import import_module
 from inspect import isfunction, iscoroutinefunction, signature
 from itertools import chain
 from sys import _getframe
-from typing import Any, Final, NoReturn
+from types import ModuleType
+from typing import cast, Any, Final, NoReturn
 
 from pyscript import config, RUNNING_IN_WORKER
+from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
 
 try:
     from pyodide.ffi import JsProxy
@@ -74,7 +76,7 @@ except ImportError:
 type _Coroutine = Coroutine[None, None, Any]
 type _CoroutineFunction = Callable[..., _Coroutine]
 type _FunctionOrCoroutine = Callable[..., Any | _Coroutine]
-type _Adapter = tuple[type, Callable[[Any], Any | _Coroutine], Callable[[Any], Any | _Coroutine]]
+type _Adapter = tuple[type, Callable[[Any], Any | _Coroutine] | None, Callable[[Any], Any | _Coroutine] | None]
 _TransportSafe = int | float | bool | str | Buffer | Iterable | Sequence | Mapping | None  # type: ignore[type-arg]
 
 try:  # To turn runtime typechecking on, add "beartype" to `packages` array in your `workerlib.toml`
@@ -108,42 +110,59 @@ def _error(message: str) -> NoReturn:
     raise RuntimeError(f"{_PREFIX} {message}")
 
 @_typechecked
-def _adaptersFrom(mapping: Mapping[str, Sequence[str]] | None) -> None:
-    if not mapping:
-        return
-    ret: list[_Adapter] = []
-    for (moduleName, names) in mapping.items():
+def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str]]) -> Iterator[_Adapter]:
+    if not isinstance(names, Sequence):
+        _error(f"""Bad adapter tuple type {type(names)} for module {module.__name__}""")
+    if not names:
+        _error(f"""Empty adapter tuple for module {module.__name__}""")
+    if isinstance(names[0], str):
         if len(names) != 3:
-            _error(f"""Bad adapter settings for module {moduleName}, must be '["className", "encoderFunction", "decoderFunction"]', got {names!r}""")
-        _log(f"Importing from module {moduleName}: {', '.join(names)}")
-        module = import_module(moduleName)
-        (cls, encoder, decoder) = (getattr(module, name) for name in names)
+            _error(f"""Bad adapter settings for module {module.__name__}, must be '["className", "encoderFunction", "decoderFunction"]', got {names!r}""")
+        _log(f"Importing from module {module.__name__}: {', '.join(cast(str, name) for name in names if name != 'None')}")
+        (cls, encoder, decoder) = (None if name == 'None' else getattr(module, cast(str, name)) for name in names)
         if not isinstance(cls, type):
-            _error(f"Bad adapter class {names[0]} for module {moduleName}, must be type, got {type(cls)}")
-        if not isfunction(encoder) and not iscoroutinefunction(encoder):
-            _error(f"Bad adapter encoder {names[1]} for module {moduleName}, must be function or coroutine, got {type(encoder)}")
-        if not isfunction(decoder) and not iscoroutinefunction(decoder):
-            _error(f"Bad adapter encoder {names[2]} for module {moduleName}, must be function or coroutine, got {type(decoder)}")
-        ret.append((cls, encoder, decoder))
+            _error(f"Bad adapter class {names[0]} for module {module.__name__}, must be type, got {type(cls)}")
+        if encoder is not None and not isfunction(encoder) and not iscoroutinefunction(encoder):
+            _error(f'Bad adapter encoder {names[1]} for module {module.__name__}, must be function or coroutine or "None", got {type(encoder)}')
+        if decoder is not None and not isfunction(decoder) and not iscoroutinefunction(decoder):
+            _error(f'Bad adapter encoder {names[2]} for module {module.__name__}, must be function or coroutine or "None", got {type(decoder)}')
         _log(f"Adapter created: {decoder} => {cls} => {encoder}")
-    global __adapters__  # noqa: PLW0603  # pylint: disable=global-statement
-    __adapters__ = tuple(ret)
+        yield (cls, encoder, decoder)
+    else:
+        for subSequence in names:
+            yield from _adaptersFromSequence(module, subSequence)
 
 @_typechecked
-async def _from_py(obj: Any) -> Any:
+def _adaptersFrom(mapping: Mapping[str, Sequence[str | Sequence[str]]] | None) -> None:
+    if not mapping:
+        return
+    adapters: list[_Adapter] = []
+    for (moduleName, names) in mapping.items():
+        if (module := globals().get(moduleName)) is None:
+            _log(f"Importing module {moduleName}")
+            module = import_module(moduleName)
+        adapters.extend(_adaptersFromSequence(module, names))
+    global __adapters__  # noqa: PLW0603  # pylint: disable=global-statement
+    __adapters__ = tuple(adapters)
+
+@_typechecked
+async def _to_js(obj: Any) -> Any:
     for (cls, encoder, _decoder) in __adapters__:
         if isinstance(obj, cls):
-            value = await encoder(obj) if iscoroutinefunction(encoder) else encoder(obj)
-            return (_ADAPTER_PREFIX + cls.__name__, value)  # Encoded class name is NOT the name of type of object being encoded, but name of the adapter to use to decode the object on the other side
+            if encoder:  # noqa: SIM108
+                value = await encoder(obj) if iscoroutinefunction(encoder) else encoder(obj)
+            else:
+                value = obj  # Trying to pass object as is, hoping it would work, like for Enums
+            return to_js((_ADAPTER_PREFIX + cls.__name__, value))  # Encoded class name is NOT the name of type of object being encoded, but name of the adapter to use to decode the object on the other side
     if not isinstance(obj, _TransportSafe):
         _error(f"No adapter found for class {type(obj)}, and transport layer (JavaScript structured clone) would not accept it as is, see https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm")
     if isinstance(obj, str | Buffer):
-        return obj
+        return to_js(obj)
     if isinstance(obj, Mapping):
-        return {await _from_py(k): await _from_py(v) for (k, v) in obj.items()}
+        return to_js({await _to_js(k): await _to_js(v) for (k, v) in obj.items()})
     if isinstance(obj, Iterable):
-        return tuple([await _from_py(v) for v in obj])  # pylint: disable=consider-using-generator
-    return obj
+        return to_js(tuple([await _to_js(v) for v in obj]))  # pylint: disable=consider-using-generator
+    return to_js(obj)
 
 @_typechecked
 async def _to_py(obj: Any) -> Any:
@@ -163,7 +182,9 @@ async def _to_py(obj: Any) -> Any:
         return obj
     className = tokens[1]
     for (cls, _encoder, decoder) in __adapters__:
-        if className == cls.__name__:
+        if className == cls.__name__:  # ToDo: Can't we import class by full name and use `isinstance()` ?
+            if decoder is None:
+                return cls(value)  # e.g. Enum
             return await decoder(value) if iscoroutinefunction(decoder) else decoder(value)
     _error(f"No adapter found to decode class {className}")
 
@@ -182,8 +203,8 @@ if RUNNING_IN_WORKER:  ##
         _log("WARNING: beartype is not available, running fast with typing unchecked")
 
     try:
-        assert False  # noqa: B011, PT015
-        _log("Assertions are DISABLED")  # type: ignore[unreachable]
+        assert str()  # noqa: UP018
+        _log("Assertions are DISABLED")
     except AssertionError:
         _log("Assertions are enabled")
 
@@ -200,7 +221,7 @@ if RUNNING_IN_WORKER:  ##
                 kwargs = args[-1]
                 args = args[:-1]
             ret = await func(*args, **kwargs) if iscoroutinefunction(func) else func(*args, **kwargs)
-            return await _from_py(ret)
+            return await _to_js(ret)
         return workerSerializedWrapper
 
     @_typechecked
@@ -306,12 +327,9 @@ else:  ##  MAIN THREAD
         @_typechecked
         async def mainSerializedWrapper(*args: Any, **kwargs: Any) -> Any:
             assert isinstance(func, JsProxy), type(func)
-            args = await _from_py(args)  # type: ignore[unreachable]
-            assert isinstance(args, tuple), type(args)
-            kwargs = await _from_py(kwargs)
-            assert isinstance(kwargs, dict), type(kwargs)
-            ret = await func(*args, **kwargs)
-            return await _to_py(ret)
+            args = tuple([await _to_js(arg) for arg in args])  # type: ignore[unreachable]  # pylint: disable=consider-using-generator
+            kwargs = {key: await _to_js(value) for (key, value) in kwargs.items()}
+            return await _to_py(await func(*args, **kwargs))
         if looksLike and (isfunction(looksLike) or iscoroutinefunction(looksLike)):
             return wraps(looksLike)(mainSerializedWrapper)
         ret = wraps(func)(mainSerializedWrapper)

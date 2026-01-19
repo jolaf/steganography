@@ -563,12 +563,17 @@ class ImageBlock:
     @classmethod
     async def process(cls,
                       targetStages: Stage | Iterable[Stage],
-                      processFunction: Callable[..., Image | tuple[Image, Image, Transpose | None, bool]] | Callable[..., Awaitable[Image | tuple[Image, Image, Transpose | None, bool]]],
+                      processFunction: Callable[..., Image |
+                                                     tuple[Image, Image] |
+                                                     tuple[Image, Image, Transpose | None, bool]] |
+                                       Callable[..., Awaitable[Image |
+                                                               tuple[Image, Image] |
+                                                               tuple[Image, Image, Transpose | None, bool]]],
                       sourceStages: Stage | Iterable[Stage],
                       *,
                       optionalSourceStages: Stage | Iterable[Stage] | None = None,
                       affectedStages: Stage | Iterable[Stage] | None = None,
-                      options: Iterable[str] | Mapping[str, Any] = ()) -> tuple[Transpose | int | None, bool] | None:
+                      options: Iterable[str] | Mapping[str, Any] = ()) -> tuple[Transpose | None, bool] | None:
         sources = tuple(cls.imageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.imageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         optionalSources = tuple(cls.imageBlocks[stage] for stage in ((optionalSourceStages,) if isinstance(optionalSourceStages, Stage) else optionalSourceStages or ()))
@@ -905,8 +910,8 @@ async def main() -> None:
         except BeartypeException:
             log("Beartype v" + beartypeVersion + " is up and watching, remove it from PyScript configuration to make things faster")
     try:
-        assert False  # noqa: B011, PT015
-        log("Assertions are DISABLED")  # type: ignore[unreachable]
+        assert str()  # noqa: UP018
+        log("Assertions are DISABLED")
     except AssertionError:
         log("Assertions are enabled")
     await repaint()

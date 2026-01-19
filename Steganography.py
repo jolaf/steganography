@@ -380,7 +380,7 @@ async def encrypt(source: Image,
     return (lockImage, keyImage)
 
 @typechecked
-async def overlay(lockImage: Image, keyImage: Image, *, rotate: Transpose | int | None = None, flip: bool | None = None, border: bool | None = None) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
+async def overlay(lockImage: Image, keyImage: Image, *, rotate: Transpose | None = None, flip: bool | None = None, border: bool | None = None) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
     """
     Emulates precise overlaying of two 1-bit images one on top of the other,
     as if they were printed on transparent film.

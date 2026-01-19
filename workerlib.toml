@@ -9,4 +9,4 @@ sync_main_only = true
 "Steganography" = ["encrypt", "overlay", "processImage"]
 
 [adapters]
-"Steganography" = ["Image", "imageToBytes", "loadImage"]
+"Steganography" = [["Image", "imageToBytes", "loadImage"], ["Transpose", "None", "None"]]
