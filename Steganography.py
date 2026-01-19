@@ -70,6 +70,13 @@ ROTATE_90 = Transpose.ROTATE_90
 ROTATE_180 = Transpose.ROTATE_180
 ROTATE_270 = Transpose.ROTATE_270
 
+INVERSE_TRANSPOSE: Mapping[Transpose | None, Transpose | None] = {
+    None: None,
+    ROTATE_90: ROTATE_270,
+    ROTATE_180: ROTATE_180,
+    ROTATE_270: ROTATE_90,
+}
+
 N: Final[int] = 2 * 2  # Size of "unit" pixel block to operate on
 type Bit = Literal[0, 1]
 BitsN = tuple[Bit, Bit, Bit, Bit]  # Superclass for BitBlock
@@ -249,10 +256,6 @@ async def processImage(image: Image,
                        resizeFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
                        resizeWidth: int | None = None,
                        resizeHeight: int | None = None,
-                       padWidth: int | None = None,
-                       padHeight: int | None = None,
-                       randomRotate: bool | None = None,
-                       randomFlip: bool | None = None,
                        dither: bool | None = None) -> Image | None:
     """
     Converts the arbitrary `Image` to 1-bit B&W with Alpha format,
@@ -264,14 +267,8 @@ async def processImage(image: Image,
         raise ValueError(f"Bad resizeWidth {resizeWidth}, must be positive int")
     if resizeHeight is not None and (not isinstance(resizeHeight, int) or resizeHeight <= 0):
         raise ValueError(f"Bad resizeHeight {resizeHeight}, must be positive int")
-    if padWidth is not None and (not isinstance(padWidth, int) or padWidth <= 0):
-        raise ValueError(f"Bad padWidth {padWidth}, must be positive int")
-    if padHeight is not None and (not isinstance(padHeight, int) or padHeight <= 0):
-        raise ValueError(f"Bad padHeight {padHeight}, must be positive int")
-    if bool(padWidth) ^ bool(padHeight):
-        raise ValueError("Either both padWidth and padHeight should be specified, or none of them")
-    if sum(bool(v) for v in (resizeFactor, resizeWidth or resizeHeight, padWidth or padHeight)) > 1:
-        raise ValueError("Either resizeFactor or resizeWidth/resizeHeight or padWidth/padHeight can be specified")
+    if resizeFactor and (resizeWidth or resizeHeight):
+        raise ValueError("Either resizeFactor or resizeWidth/resizeHeight can be specified")
     processed = grayscale = await to_thread(image.convert, GRAYSCALE)  # 8-bit grayscale
     if resizeFactor and resizeFactor != 1:
         processed = await to_thread(imageScale, processed, resizeFactor, RESAMPLING)
@@ -284,13 +281,6 @@ async def processImage(image: Image,
             resizeWidth = round(float(processed.width) * resizeHeight / image.height)
         if (resizeWidth, resizeHeight) != processed.size:
             processed = await to_thread(processed.resize, (resizeWidth, resizeHeight), RESAMPLING)
-    elif padWidth and padHeight and (padWidth, padHeight) != processed.size:
-        processed = await to_thread(imagePad, processed, (padWidth, padHeight), RESAMPLING, color = 255)  # White background in grayscale
-    # ToDo: Should we save rotate angle and flip bit somewhere?
-    if randomRotate and (method := choice((None, ROTATE_90, ROTATE_180, ROTATE_270))) is not None:
-        processed = await to_thread(processed.transpose, method)
-    if randomFlip and choice((False, True)):
-        processed = await to_thread(processed.transpose, FLIP)
     if image.mode == BW1 and hasAlpha(image) and processed is grayscale:
         return None  # Indicates that no processing was actually performed and original image could be used as it was
     processed = await to_thread(processed.convert, BW1, dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)
@@ -298,22 +288,46 @@ async def processImage(image: Image,
     return processed
 
 @typechecked
-async def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image | None = None, *, smooth: bool | None = None) -> tuple[Image, Image]:
+async def encrypt(source: Image,
+                  lockMask: Image | None = None,
+                  keyMask: Image | None = None,
+                  *,
+                  randomRotate: bool | None = None,
+                  randomFlip: bool | None = None,
+                  smooth: bool | None = None) -> tuple[Image, Image, Transpose | None, bool] | tuple[Image, Image]:
     """
     Generates lock and key images from the specified source `Image`.
     If `lockMask` and/or `keyMask` are provided,
     they are used as visible hints on the corresponding output images.
     """
+    if randomRotate:
+        if source.width == source.height:  # noqa: SIM108  # ToDo: This is about lock size actually? Or we need padToSquare?
+            rotateMethod = choice((None, ROTATE_90, ROTATE_180, ROTATE_270))
+        else:  # We can't rotate non-square image 90° without it's being evident
+            rotateMethod = choice((None, ROTATE_180))
+    else:
+        rotateMethod = None
+    inverseRotateMethod = INVERSE_TRANSPOSE[rotateMethod]
+    flip = bool(randomFlip) and choice((False, True))
+
     # PIL/NumPy array indexes are `y` first, `x` second
+    # Color False/0 is black, and True/1 is white/transparent
     if lockMask or keyMask:
-        if lockMask:
-            assert lockMask.size == source.size
+        if lockMask and lockMask.size != source.size:
+            lockMask = await to_thread(imagePad, lockMask, source.size, RESAMPLING, color = 255)  # White background in grayscale
         else:
-            lockMask = imageNew(BW1, source.size, 1)  # White/Transparent background
+            lockMask = imageNew(BW1, source.size, 1)  # white/transparent background
         if keyMask:
-            assert keyMask.size == source.size
+            if rotateMethod is not None:
+                keyMask = await to_thread(keyMask.transpose, rotateMethod)
+            if flip:
+                keyMask = await to_thread(keyMask.transpose, FLIP)
+            if keyMask.size != source.size:
+                keyMask = await to_thread(imagePad, keyMask, source.size, RESAMPLING, color = 255)  # White background in grayscale
         else:
-            keyMask = imageNew(BW1, source.size, 1)  # White/Transparent background
+            keyMask = imageNew(BW1, source.size, 1)  # white/transparent background
+        assert lockMask.size == source.size
+        assert keyMask.size == source.size
         dimensions = (source.height * 2, source.width * 2)
         lockArray = np.empty(dimensions, bool)
         keyArray = np.empty(dimensions, bool)
@@ -329,7 +343,7 @@ async def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image |
             (a1, a2) = BitBlock.getRandomPair(3 - l, 3 - k, 4 - s)
             lockArray[y : y + 2, x : x + 2] = a1
             keyArray[y : y + 2, x : x + 2] = a2
-    elif smooth:
+    elif smooth:  # No lockMask/keyMask
         dimensions = (source.height * 2, source.width * 2)
         lockArray = np.empty(dimensions, bool)
         keyArray = np.empty(dimensions, bool)
@@ -340,7 +354,7 @@ async def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image |
             (a1, a2) = BitBlock.getRandomPair(2, 2, 4)
             lockArray[y : y + 2, x : x + 2] = a1
             keyArray[y : y + 2, x : x + 2] = a1 if s else a2
-    else:
+    else:  # 1:1 pixels
         lockArray = np.empty(source.size, bool)
         keyArray = np.empty(source.size, bool)
         for ((y, x), s) in np.ndenumerate(np.asarray(source, bool)):
@@ -354,18 +368,31 @@ async def encrypt(source: Image, lockMask: Image | None = None, keyMask: Image |
     await sleep(0)
     keyImage = ImageFromArray(keyArray)
     await sleep(0)
+    if flip:
+        keyImage = await to_thread(keyImage.transpose, FLIP)
+    if inverseRotateMethod is not None:
+        keyImage = await to_thread(keyImage.transpose, inverseRotateMethod)
+    await sleep(0)
     finalizeImage(lockImage)
     finalizeImage(keyImage)
+    if rotateMethod is not None or flip:
+        return (lockImage, keyImage, rotateMethod, flip)  # `rotateMethod` says what to do with the key for decryption; flip after rotate!
     return (lockImage, keyImage)
 
 @typechecked
-async def overlay(lockImage: Image, keyImage: Image, *, border: bool | None = None) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
+async def overlay(lockImage: Image, keyImage: Image, *, rotate: Transpose | int | None = None, flip: bool | None = None, border: bool | None = None) -> Image:  # noqa: ARG001  # pylint: disable=unused-argument
     """
     Emulates precise overlaying of two 1-bit images one on top of the other,
     as if they were printed on transparent film.
     """
     assert lockImage.mode == BW1
     assert keyImage.mode == BW1
+    if rotate is not None:
+        if isinstance(rotate, int):
+            rotate = Transpose(rotate)
+        keyImage = await to_thread(keyImage.transpose, rotate)
+    if flip:
+        keyImage = await to_thread(keyImage.transpose, FLIP)
     assert lockImage.size == keyImage.size
     ret = await to_thread(lambda: ImageFromArray(np.minimum(np.asarray(lockImage), np.asarray(keyImage))))
     finalizeImage(ret)
@@ -400,6 +427,7 @@ else:
     __all__ = (
         'Image',
         'ImagePath',
+        'Transpose',
         'encrypt',
         'getImageMode',
         'getMimeTypeFromImage',

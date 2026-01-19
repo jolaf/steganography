@@ -97,7 +97,7 @@ from PIL import __version__ as pilVersion
 
 from workerlib import connectToWorker, Worker
 
-from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, Image
+from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, Image, Transpose
 from Steganography import encrypt, overlay, processImage  # For extracting options only
 
 TagAttrValue = str | int | float | bool
@@ -555,24 +555,24 @@ class ImageBlock:
     @classmethod
     async def process(cls,
                       targetStages: Stage | Iterable[Stage],
-                      processFunction: Callable[..., Image | Sequence[Image] | None] | Callable[..., Awaitable[Image | Sequence[Image] | None]],
+                      processFunction: Callable[..., Image | tuple[Image, Image, Transpose | None, bool]] | Callable[..., Awaitable[Image | tuple[Image, Image, Transpose | None, bool]]],
                       sourceStages: Stage | Iterable[Stage],
                       *,
                       optionalSourceStages: Stage | Iterable[Stage] | None = None,
                       affectedStages: Stage | Iterable[Stage] | None = None,
-                      options: Iterable[str] | Mapping[str, Any] = ()) -> None:
+                      options: Iterable[str] | Mapping[str, Any] = ()) -> tuple[Transpose | int | None, bool] | None:
         sources = tuple(cls.imageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.imageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         optionalSources = tuple(cls.imageBlocks[stage] for stage in ((optionalSourceStages,) if isinstance(optionalSourceStages, Stage) else optionalSourceStages or ()))
         if not any(source.dirty for source in chain(sources, optionalSources)) and \
                all(target.image for target in targets):
-            return
+            return None
         affected = tuple(cls.imageBlocks[stage] for stage in ((affectedStages,) if isinstance(affectedStages, Stage) else affectedStages or ()))
         for t in chain(targets, affected):
             t.clean()
             await repaint()
         if not all(source.image for source in sources):
-            return
+            return None
         log(f"Processing {', '.join(source.stage.name for source in chain(sources, optionalSources))} => {', '.join(target.stage.name for target in targets)}")
         for t in targets:
             t.startOperation(_("Processing image"))
@@ -592,42 +592,46 @@ class ImageBlock:
                 ret = (ret,)
             assert ret, repr(ret)
             assert isinstance(ret[0], Image), f"{type(ret)} {type(ret[0])}"
-            assert len(ret) == len(targets), f"{processFunction.__name__}() returned {len(ret)} images, expected {len(targets)}"
-            for (target, image) in zip(targets, ret, strict = True):
+            retImages = tuple(r for r in ret if isinstance(r, Image))
+            assert len(retImages) == len(targets), f"{processFunction.__name__}() returned {len(ret)} images, expected {len(targets)}"
+            for (target, image) in zip(targets, retImages, strict = True):
                 target.completeOperation(image, await imageToBytes(image))
+            await repaint()
+            if len(ret) > len(targets):
+                return ret[len(targets):]  # type: ignore[no-any-return]
         except Exception as ex:  # noqa : BLE001
             for target in targets:
                 target.error(_("processing image"), ex)
-            return
-        finally:
             await repaint()
+        return None
 
     @classmethod
     async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
         log("Started pipeline")
         assert cls.worker
-        await cls.process(Stage.PROCESSED_SOURCE,
-                              cls.worker.processImage, Stage.SOURCE,  # type: ignore[attr-defined]
-                              affectedStages = (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
-                              options = cls.PROCESS_OPTIONS[processImage])
-        processedSource = cls.imageBlocks[Stage.PROCESSED_SOURCE].image
-        await cls.process(Stage.PROCESSED_LOCK,
-                          cls.worker.processImage, Stage.LOCK,  # type: ignore[attr-defined]
-                          options = {'padWidth': processedSource and processedSource.width,  # ToDo: Use lockSize here, calculate it
-                                     'padHeight': processedSource and processedSource.height,
-                                     'dither': None})
-        await cls.process(Stage.PROCESSED_KEY,
-                          cls.worker.processImage, Stage.KEY,  # type: ignore[attr-defined]
-                          options = {'padWidth': processedSource and processedSource.width,
-                                     'padHeight': processedSource and processedSource.height,
-                                     'dither': None})
-        await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
-                          cls.worker.encrypt, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
-                          optionalSourceStages = (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
-                          options = cls.PROCESS_OPTIONS[encrypt])
-        await cls.process(Stage.KEY_OVER_LOCK_TEST,
-                          cls.worker.overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),  # type: ignore[attr-defined]
-                          options = cls.PROCESS_OPTIONS[overlay])  # ToDo: Somehow handle random rotation and location
+        ret = await cls.process(Stage.PROCESSED_SOURCE,
+                                cls.worker.processImage, Stage.SOURCE,  # type: ignore[attr-defined]
+                                options = cls.PROCESS_OPTIONS[processImage])
+        ret = await cls.process(Stage.PROCESSED_LOCK,
+                                cls.worker.processImage, Stage.LOCK,  # type: ignore[attr-defined]
+                                options = {'dither': None})
+        ret = await cls.process(Stage.PROCESSED_KEY,
+                                cls.worker.processImage, Stage.KEY,  # type: ignore[attr-defined]
+                                options = {'dither': None})
+        ret = await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
+                                cls.worker.encrypt, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
+                                optionalSourceStages = (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
+                                options = cls.PROCESS_OPTIONS[encrypt])
+        options: dict[str, Any] | Sequence[str]
+        if ret:
+            options = dict.fromkeys(cls.PROCESS_OPTIONS[overlay])
+            assert len(ret) == 2, ret
+            (options['rotate'], options['flip']) = ret
+        else:
+            options = cls.PROCESS_OPTIONS[overlay]
+        ret = await cls.process(Stage.KEY_OVER_LOCK_TEST,
+                                cls.worker.overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),  # type: ignore[attr-defined]
+                                options = options)
         for imageBlock in cls.imageBlocks.values():
             imageBlock.dirty = False
         log("Completed pipeline")
