@@ -14,9 +14,8 @@ type Occurrence = tuple[str, str]
 type Occurrences = list[Occurrence]
 
 KEEP: Final[str] = 'keep'
-
 PATTERNS: Mapping[str, str] = {
-    'html': r'''[>]%s:?[<]|"%s[)]?"|[(]%s[)]|^\s+%s:?$''',
+    'html': r'''[>]%s:?[<]|"%s[)]?"|[(]%s[)]|^\s+%s:?$|,\s+%s\s\d+''',
     'py': r'''_[(]"?%s"?[)]|"%s"''',
 }
 

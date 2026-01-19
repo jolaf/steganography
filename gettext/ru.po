@@ -141,6 +141,10 @@ msgstr "Скачать"
 msgid "Vasily Zakharov"
 msgstr "Василий Захаров"
 
+#: index.html:139
+msgid "Victor Kurush"
+msgstr "Виктор Куруш"
+
 #: main.py:246
 msgid "integer"
 msgstr "целое"
@@ -197,22 +201,22 @@ msgstr "Тест наложения"
 msgid "Processing image"
 msgstr "Обработка изображения"
 
-#: main.py:600
+#: main.py:604
 msgid "processing image"
 msgstr "обработки изображения"
 
-#: main.py:726
+#: main.py:736
 msgid "ERROR"
 msgstr "ОШИБКА"
 
-#: main.py:758
+#: main.py:768
 msgid "bytes"
 msgstr "байт"
 
-#: main.py:798 main.py:828
+#: main.py:808 main.py:838
 msgid "loading image"
 msgstr "загрузки изображения"
 
-#: main.py:819
+#: main.py:829
 msgid "Loading image"
 msgstr "Загрузка изображения"
