@@ -56,7 +56,7 @@ except ImportError:
         from pyscript import __version__ as pyscriptVersion  # type: ignore[attr-defined]
     except ImportError:
         try:
-            coreURL = next(element.src for element in page['script'] if element.src.endswith('core.js'))
+            coreURL = next(element.src for element in page.find('script') if element.src.endswith('core.js'))
             pyscriptVersion = next(word for word in coreURL.split('/') if findall(r'\d', word))
         except Exception:  # noqa: BLE001
             pyscriptVersion = "UNKNOWN"
@@ -172,7 +172,7 @@ async def blobToBytes(blob: Blob) -> bytes:
 
 @typechecked
 def getElementByID(elementID: str) -> Element:
-    return page['#' + elementID][0]
+    return page['#' + elementID]
 
 @typechecked
 def hide(element: str | Element) -> None:
@@ -184,7 +184,8 @@ def hide(element: str | Element) -> None:
 def show(element: str | Element) -> None:
     if isinstance(element, str):
         element = getElementByID(element)
-    element.classes.remove(HIDDEN)
+    with suppress(KeyError):
+        element.classes.remove(HIDDEN)
 
 @typechecked
 def getAttr(element: str | Element, attr: str, default: str | None = None) -> str | None:
@@ -296,11 +297,11 @@ class Options(Storage):
         log("Language set to", cls.LANGUAGES[language])
 
         for textNode in chain[Text].from_iterable(iterTextNodes(root)
-                for root in page[cls.TEXT_NODE_ROOTS]):
+                for root in page.find(cls.TEXT_NODE_ROOTS)):
             if translated := cls.translateString(textNode.nodeValue):
                 textNode.nodeValue = translated
 
-        for element in page[', '.join(cls.TRANSLATABLE_TAG_ATTRS)]:
+        for element in page.find(', '.join(cls.TRANSLATABLE_TAG_ATTRS)):
             for attr in cls.TRANSLATABLE_TAG_ATTRS[element.tagName]:
                 if translated := cls.translateString(getAttr(element, attr)):
                     setAttr(element, attr, translated)
