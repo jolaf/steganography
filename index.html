@@ -17,20 +17,17 @@
   <link rel="shortcut icon" href="./images/favicon.ico">
   <link rel="apple-touch-icon" sizes="180x180" href="./images/favicon-180.png">
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="https://pyscript.net/releases/2026.1.1/core.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@pyscript/core@0.7.14/dist/core.css">
   <link rel="stylesheet" href="./main.css">
   <script type="module" src="./bootstrap.js"></script>
   <script type="module">
-    "use strict";
-    /* jshint browser: true */
-    /* jshint esversion: 6 */
     if (typeof bootstrapLoadedOK === 'undefined') {
         const logElement = document.getElementById('log');
         logElement.textContent = "ERROR: Loading failed, probably because you're running from local files, and browser CORS prevents loading page components.";
         logElement.classList.add('error');
     }
   </script>
-  <script type="module" src="https://pyscript.net/releases/2026.1.1/core.js"></script>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@pyscript/core@0.7.14/dist/core.js"></script>
   <!-- script async src="https://www.googletagmanager.com/gtag/js?id=G-E9101DVB96"></script>
   <script type="module">
     window.dataLayer = window.dataLayer || [];

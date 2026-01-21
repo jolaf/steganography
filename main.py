@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 PREFIX = "[main]"
-print(f"{PREFIX} Loading app")
+print(PREFIX, "Loading app")
 
 from asyncio import create_task, get_running_loop, sleep, to_thread, AbstractEventLoop
 from collections.abc import Awaitable, Buffer, Callable, Iterable, Iterator, Mapping, Sequence  # beartype needs these things in runtime
@@ -16,16 +16,41 @@ from itertools import chain
 from pathlib import Path
 from re import findall, match
 import sys
-from sys import version as pythonVersion
+from sys import platform, version as pythonVersion
 from traceback import extract_tb
 from types import TracebackType  # noqa: TC003
 from typing import cast, Any, ClassVar, Final
 
 try:
+    from os import process_cpu_count  # type: ignore[attr-defined]
+    cpus: Any = process_cpu_count()
+except ImportError:
+    try:
+        from os import cpu_count
+        cpus = cpu_count()
+    except ImportError:
+        cpus = "UNKNOWN"
+
+try:
+    from sys import _emscripten_info  # type: ignore[attr-defined]  # pylint: disable=ungrouped-imports
+    assert platform == 'emscripten'
+    emscriptenVersion: str | None = '.'.join(str(v) for v in _emscripten_info.emscripten_version)
+    runtime = _emscripten_info.runtime
+    pthreads = _emscripten_info.pthreads
+    sharedMemory = _emscripten_info.shared_memory
+except ImportError:
+    emscriptenVersion = runtime = sharedMemory = None
+    try:
+        from os import sysconf  # pylint: disable=ungrouped-imports
+        pthreads = sysconf('SC_THREADS') > 0
+    except (ImportError, ValueError, AttributeError):
+        pthreads = False
+
+try:
     from beartype import beartype as typechecked, __version__ as beartypeVersion
     from beartype.roar import BeartypeException
 except ImportError:
-    print(f"{PREFIX} WARNING: beartype is not available, running fast with typing unchecked")
+    print(PREFIX, "WARNING: beartype is not available, running fast with typing unchecked")
     beartypeVersion = None  # type: ignore[assignment]
 
     def typechecked(func: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[no-redef]
@@ -38,7 +63,7 @@ try:
     def getDefaultTaskName() -> str:
         return cast(str, generate_slug(2))
 except ImportError:
-    print(f'{PREFIX} WARNING: coolname is not available, using "steganography" as default task name')
+    print(PREFIX, 'WARNING: coolname is not available, using "steganography" as default task name')
 
     @typechecked
     def getDefaultTaskName() -> str:
@@ -149,7 +174,7 @@ def toJsElement(element: Element | JsProxy) -> JsProxy:
 @typechecked
 def log(*args: Any, showToUser: bool = True) -> None:
     message = ' '.join(str(arg) for arg in args)
-    print(f"{PREFIX} {message}")
+    print(PREFIX, message)
     if showToUser:
         logElement = getElementByID('log')
         toJsElement(logElement).append(f"{datetime.now().astimezone().strftime('%H:%M:%S')} {PREFIX} {message}\n")  # https://github.com/pyscript/pyscript/issues/2418
@@ -171,8 +196,8 @@ async def blobToBytes(blob: Blob) -> bytes:
     return (await blob.arrayBuffer()).to_bytes()
 
 @typechecked
-def getElementByID(elementID: str) -> Element:
-    return page['#' + elementID]
+def getElementByID(elementID: str) -> Element:  # ToDo: Replace with page[id]
+    return page[elementID]
 
 @typechecked
 def hide(element: str | Element) -> None:
@@ -219,7 +244,7 @@ def resetInput(element: str | Element) -> None:
     #dispatchEvent(element, CHANGE)  # We don't do it to avoid running pipeline multiple times when resetting all options
 
 @typechecked
-def dispatchEvent(element: str | Element, eventType: str) -> None:
+def dispatchEvent(element: str | Element, eventType: str) -> None:  # ToDo: remove it when everything is working
     if isinstance(element, str):
         element = getElementByID(element)
     element.dispatchEvent(newEvent(eventType))
@@ -355,7 +380,8 @@ class Options(Storage):
         if name == 'language':  # <SELECT>
             assert element.tagName == SELECT, element.tagName
             assert valueType is str, valueType
-            element.innerHTML = ''.join(f'<option value="{lang}">{name}</option>' for (lang, name) in self.LANGUAGES.items())
+            for (lang, langName) in self.LANGUAGES.items():
+                element.options.add(value = lang, html = langName)  # type: ignore[union-attr]
         else:  # <INPUT>
             assert element.tagName == INPUT, element.tagName
             setAttr(element, TYPE, CHECKBOX if valueType is bool else TEXT)
@@ -544,7 +570,7 @@ class ImageBlock:
             cls.imageBlocks[stage] = ImageBlock(stage)
         for (stage, block) in cls.imageBlocks.items():
             block.source = cls.imageBlocks.get(cls.SOURCES.get(stage))  # type: ignore[arg-type]
-        cls.worker = await connectToWorker('workerlib')
+        cls.worker = await connectToWorker()
 
     @classmethod
     async def loadImages(cls) -> None:
@@ -562,16 +588,14 @@ class ImageBlock:
     async def process(cls,
                       targetStages: Stage | Iterable[Stage],
                       processFunction: Callable[..., Image |
-                                                     tuple[Image, Image] |
-                                                     tuple[Image, Image, Transpose | None, bool]] |
+                                                     tuple[Image, Image, tuple[int, int], Transpose | None, bool]] |
                                        Callable[..., Awaitable[Image |
-                                                               tuple[Image, Image] |
-                                                               tuple[Image, Image, Transpose | None, bool]]],
+                                                               tuple[Image, Image, tuple[int, int], Transpose | None, bool]]],
                       sourceStages: Stage | Iterable[Stage],
                       *,
                       optionalSourceStages: Stage | Iterable[Stage] | None = None,
                       affectedStages: Stage | Iterable[Stage] | None = None,
-                      options: Iterable[str] | Mapping[str, Any] = ()) -> tuple[Transpose | None, bool] | None:
+                      options: Iterable[str] | Mapping[str, Any] = ()) -> tuple[tuple[int, int], Transpose | None, bool] | None:
         sources = tuple(cls.imageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.imageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         optionalSources = tuple(cls.imageBlocks[stage] for stage in ((optionalSourceStages,) if isinstance(optionalSourceStages, Stage) else optionalSourceStages or ()))
@@ -636,8 +660,8 @@ class ImageBlock:
         options: dict[str, Any] | Sequence[str]
         if ret:
             options = dict.fromkeys(cls.PROCESS_OPTIONS[overlay])
-            assert len(ret) == 2, ret
-            (options['rotate'], options['flip']) = ret
+            assert len(ret) == 3, ret
+            (options['position'], options['rotate'], options['flip']) = ret  # ToDo: Make encrypt return options dict ready for overlay
         else:
             options = cls.PROCESS_OPTIONS[overlay]
         ret = await cls.process(Stage.KEY_OVER_LOCK_TEST,
@@ -898,11 +922,21 @@ async def main() -> None:
     log("Starting app")
     sys.excepthook = mainExceptionHandler
     get_running_loop().set_exception_handler(loopExceptionHandler)
-    log("PyScript v" + pyscriptVersion)
-    log("Pyodide v" + pyodideVersion)
-    log("Python v" + pythonVersion)
-    log("Pillow v" + pilVersion)
-    log("NumPy v" + numpyVersion)
+    log("Python", pythonVersion)  # ToDo: Move it to workerlib?
+    log("PyScript", pyscriptVersion)  # def sysConf() -> tuple[str] ?
+    log("Pyodide", pyodideVersion)
+
+    if platform == 'emscripten':
+        log("Emscripten", emscriptenVersion)
+        log("Runtime:", runtime)
+        log("CPUs:", cpus, " pthreads:", pthreads, " SharedMemory:", sharedMemory)
+    else:
+        log("Platform:", platform)
+        log("CPUs:", cpus, " pthreads:", pthreads)
+
+    log("Pillow", pilVersion)
+    log("NumPy", numpyVersion)
+
     if beartypeVersion:
         try:
             @typechecked
@@ -911,12 +945,14 @@ async def main() -> None:
             test()
             raise RuntimeError("Beartype v" + beartypeVersion + " is not operating properly")
         except BeartypeException:
-            log("Beartype v" + beartypeVersion + " is up and watching, remove it from PyScript configuration to make things faster")
+            log("Beartype", beartypeVersion, "is up and watching, remove it from PyScript configuration to make things faster")
+
     try:
         assert str()  # noqa: UP018
         log("Assertions are DISABLED")
     except AssertionError:
         log("Assertions are enabled")
+
     await repaint()
     await ImageBlock.init()
     hide('log')
@@ -930,4 +966,4 @@ async def main() -> None:
 if __name__ == '__main__':
     create_task(main())  # `create_task()` is only needed to silence static checkers that don't like `await` in global module code  # noqa: RUF006
 
-print(f"{PREFIX} Loaded app")
+print(PREFIX, "Loaded app")

@@ -66,6 +66,7 @@ from typing import cast, Any, Final, NoReturn
 
 from pyscript import config, RUNNING_IN_WORKER
 from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
+from pyscript.web import page  # pylint: disable=import-error, no-name-in-module
 
 try:
     from pyodide.ffi import JsProxy
@@ -112,8 +113,8 @@ def _error(message: str) -> NoReturn:
 @_typechecked
 def _importModule(moduleName: str) -> ModuleType:
     if (module := globals().get(moduleName)) is None:
-        _log(f"Importing module {moduleName}")
-        module = import_module(moduleName)
+        _log("Importing module", moduleName)
+        globals()[moduleName] = module = import_module(moduleName)
     return module
 
 @_typechecked
@@ -219,7 +220,7 @@ if RUNNING_IN_WORKER:  ##
 
     try:
         from beartype import __version__ as _version
-        _log(f"Beartype v{_version} is up and watching, remove it from worker configuration to make things faster")
+        _log("Beartype", _version, "is up and watching, remove it from worker configuration to make things faster")
     except ImportError:
         _log("WARNING: beartype is not available, running fast with typing unchecked")
 
@@ -293,7 +294,7 @@ if RUNNING_IN_WORKER:  ##
         exportNamesTuple = tuple(chain(target.get(__EXPORT__, ()), exportNames))
         target[__EXPORT__] = exportNamesTuple
         globals()[__EXPORT__] = exportNamesTuple  # This is only needed to make `_connectFromMain()` code universal for both `export()` and `_exportFrom()`
-        _log(f"Started worker, providing functions: {', '.join(name for name in exportNamesTuple if name != _connectFromMain.__name__)}")
+        _log("Started worker, providing functions:", ', '.join(name for name in exportNamesTuple if name != _connectFromMain.__name__))
 
     # Gets called automatically if this module itself is loaded as a worker
     @_typechecked
@@ -310,20 +311,19 @@ if RUNNING_IN_WORKER:  ##
             _log("WARNING: no functions found to export, check `[exports]` section in the config")
 
         target[__EXPORT__] = tuple(exportNames)
-        _log(f"Started worker, providing functions: {', '.join(name for name in exportNames if name != _connectFromMain.__name__)}")
+        _log("Started worker, providing functions:", ', '.join(name for name in exportNames if name != _connectFromMain.__name__))
 
     __adapters__ = _adaptersFrom(config.get(_ADAPTERS_SECTION))
 
     if __name__ == '__main__':
         # If this module itself is used as a worker, it imports modules mentioned in config and exports them automatically
+        del export
+        __all__ = ()
         __export__ = ()
         _exportFrom(config.get(_EXPORTS_SECTION))
         assert __export__, __export__
-        del export  # type: ignore[unreachable]
-        __all__ = ()
     else:
         # If user is importing this module in a worker, they MUST call `export()` explicitly
-        del __export__
         del _exportFrom
         __all__ = (export.__name__,)  # noqa: PLE0604
 
@@ -342,12 +342,14 @@ else:  ##  MAIN THREAD
 
     @_typechecked
     def _mainSerialized(func: _CoroutineFunction, looksLike: _FunctionOrCoroutine | str | None = None) -> _CoroutineFunction:
+
         @_typechecked
         async def mainSerializedWrapper(*args: Any, **kwargs: Any) -> Any:
             assert isinstance(func, JsProxy), type(func)
             args = tuple([await _to_js(arg) for arg in args])  # type: ignore[unreachable]  # pylint: disable=consider-using-generator
             kwargs = {key: await _to_js(value) for (key, value) in kwargs.items()}
             return await _to_py(await func(*args, **kwargs))
+
         if looksLike and (isfunction(looksLike) or iscoroutinefunction(looksLike)):
             return wraps(looksLike)(mainSerializedWrapper)
         ret = wraps(func)(mainSerializedWrapper)
@@ -356,22 +358,34 @@ else:  ##  MAIN THREAD
         return ret
 
     @_typechecked
-    async def connectToWorker(workerName: str) -> Worker:
+    async def connectToWorker(workerName: str | None = None) -> Worker:
+        global __adapters__  # noqa: PLW0603  # pylint: disable=global-statement
+        if not __adapters__:
+            __adapters__ = _adaptersFrom(config.get(_ADAPTERS_SECTION))
+
+        if not workerName:
+            if not (names := tuple(element.getAttribute('name') for element in page.find('script[type="py"][worker]'))):
+                _error("Could not find worker name in DOM")
+            if len(names) > 1:
+                _error(f"Found the following worker names in DOM: ({', '.join(names)}), which one to connect to?")
+            workerName = names[0]
+
         _log(f'Looking for worker named "{workerName}"')
         worker = await workers[workerName]
         _log("Got worker, connecting")
         data = await _mainSerialized(worker._connectFromMain, '_connectFromMain')(_CONNECT_REQUEST)  # noqa: SLF001  # pylint: disable=protected-access
         if not data or data[0] != _CONNECT_RESPONSE:
             _error(f"Connection to worker is misconfigured, can't continue: {type(data)}: {data!r}")
+
         ret = Worker(worker)  # We can't return `worker`, as it is a `JsProxy` and we can't reassign its fields, `setattr()` is not working, so we have to create a class of our own to store `wrap()`ped functions.
         for funcName in data[1:]:  # We can't get a list of exported functions from `worker` object to `wrap()` them, so we have to pass it over in our own way.
             assert funcName != connectToWorker.__name__
             if not (func := getattr(worker, funcName, None)):
                 _error(f"Function {funcName} is not exported from the worker")
             setattr(ret, funcName, _mainSerialized(func, funcName))
+
         _log("Connected to worker")
         return ret
 
     assert not hasattr(globals(), __EXPORT__), getattr(globals(), __EXPORT__)
-    __adapters__ = _adaptersFrom(config.get(_ADAPTERS_SECTION))
     __all__ = (Worker.__name__, connectToWorker.__name__)  # noqa: PLE0604

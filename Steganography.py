@@ -9,12 +9,13 @@ from itertools import product
 from math import factorial as f
 from mimetypes import guess_type
 from re import split
-from secrets import choice
+from secrets import choice  #, token_bytes
 from sys import argv, exit as sysExit, stderr
+from time import time
 from typing import cast, Any, ClassVar, Final, IO, Literal
 
 try:
-    from PIL.Image import fromarray as ImageFromArray, new as imageNew, open as imageOpen, Dither, Image, Resampling, Transpose
+    from PIL.Image import fromarray as imageFromArray, new as imageNew, open as imageOpen, Dither, Image, Resampling, Transpose
     from PIL.ImageMode import getmode as imageGetMode
     from PIL.ImageOps import pad as imagePad, scale as imageScale
     from PIL._typing import StrOrBytesPath
@@ -175,6 +176,14 @@ def error(*args: Any) -> None:
     sysExit(1)
 
 @typechecked
+async def timeToThread[T](func: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
+    print(f"# Starting {func} {args} {kwargs}")
+    startTime = time()
+    ret = await to_thread(func, *args, **kwargs)
+    print(f"# Completed in {time() - startTime:.3f} seconds: {func} {args} {kwargs}")  # ToDo: leave this function in permanently, but print something only it's longer than 10ms?
+    return ret
+
+@typechecked
 async def loadImage(source: ImagePath, fileName: str | None = None) -> Image:
     """
     Returns `Image` loaded from the specified file path,
@@ -183,14 +192,14 @@ async def loadImage(source: ImagePath, fileName: str | None = None) -> Image:
     `fileName` can be added as a hint to image format in cases
     when `source` does not provide such a clue, like `BytesIO`.
     """
-    image = await to_thread(imageOpen, BytesIO(source) if isinstance(source, Buffer) else source)
+    image = await timeToThread(imageOpen, BytesIO(source) if isinstance(source, Buffer) else source)
     if not image.format:
         image.format = getImageFormatFromExtension(fileName or source)
     return image
 
 @typechecked
 async def saveImage(image: Image, path: ImagePath) -> None:
-    await to_thread(image.save, path, getImageFormatFromExtension(path), optimize = True,  # type: ignore[arg-type]
+    await timeToThread(image.save, path, getImageFormatFromExtension(path), optimize = True,
                transparency = 1 if image.mode == BW1 else None)  # `transparency` here sets the index of the color to make transparent, 1 is usually white
 
 @typechecked
@@ -261,141 +270,223 @@ async def prepareImage(image: Image,
     Converts the arbitrary `Image` to 1-bit B&W with Alpha format,
     performing additional modifications during the process.
     """
-    if resizeFactor is not None and (not isinstance(resizeFactor, int | float) or resizeFactor <= 0):
-        raise ValueError(f"Bad resizeFactor {resizeFactor}, must be a positive int or float")
+    if resizeFactor is not None and (not isinstance(resizeFactor, float | int) or resizeFactor <= 0):
+        raise ValueError(f"Bad resizeFactor {resizeFactor}, must be a positive float or int")
     if resizeWidth is not None and (not isinstance(resizeWidth, int) or resizeWidth <= 0):
         raise ValueError(f"Bad resizeWidth {resizeWidth}, must be a positive int")
     if resizeHeight is not None and (not isinstance(resizeHeight, int) or resizeHeight <= 0):
         raise ValueError(f"Bad resizeHeight {resizeHeight}, must be a positive int")
     if resizeFactor and (resizeWidth or resizeHeight):
         raise ValueError("Either resizeFactor or resizeWidth/resizeHeight can be specified")
-    processed = grayscale = await to_thread(image.convert, GRAYSCALE)  # 8-bit grayscale
+    processed = grayscale = await timeToThread(image.convert, GRAYSCALE)  # 8-bit grayscale
     if resizeFactor and resizeFactor != 1:
-        processed = await to_thread(imageScale, processed, resizeFactor, RESAMPLING)
+        processed = await timeToThread(imageScale, processed, resizeFactor, RESAMPLING)
     elif resizeWidth or resizeHeight:
         if not resizeHeight:
             assert resizeWidth
-            resizeHeight = round(float(processed.height) * resizeWidth / image.width)
+            resizeHeight = round(processed.height * resizeWidth / image.width)
         elif not resizeWidth:
             assert resizeHeight
-            resizeWidth = round(float(processed.width) * resizeHeight / image.height)
+            resizeWidth = round(processed.width * resizeHeight / image.height)
         if (resizeWidth, resizeHeight) != processed.size:
-            processed = await to_thread(processed.resize, (resizeWidth, resizeHeight), RESAMPLING)
+            processed = await timeToThread(processed.resize, (resizeWidth, resizeHeight), RESAMPLING)
     if image.mode == BW1 and hasAlpha(image) and processed is grayscale:
         return None  # Indicates that no processing was actually performed and original image could be used as it was
-    processed = await to_thread(processed.convert, BW1, dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)
+    processed = await timeToThread(processed.convert, BW1, dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)
     finalizeImage(processed)
     return processed
 
 @typechecked
-async def encrypt(source: Image,
+async def encrypt(source: Image,  # noqa: C901
                   lockMask: Image | None = None,
                   keyMask: Image | None = None,
                   *,
+                  lockFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
+                  lockWidth: int | None = None,
+                  lockHeight: int | None = None,
                   randomRotate: bool | None = None,
                   randomFlip: bool | None = None,
-                  smooth: bool | None = None) -> tuple[Image, Image, Transpose | None, bool] | tuple[Image, Image]:
+                  smooth: bool | None = None) -> tuple[Image, Image, tuple[int, int], Transpose | None, bool]:
     """
     Generates lock and key images from the specified source `Image`.
     If `lockMask` and/or `keyMask` are provided,
     they are used as visible hints on the corresponding output images.
     """
-    if randomRotate:
-        if source.width == source.height:  # noqa: SIM108  # ToDo: This is about lock size actually? Or we need padToSquare?
-            rotateMethod = choice((None, ROTATE_90, ROTATE_180, ROTATE_270))
-        else:  # We can't rotate non-square image 90° without it's being evident
-            rotateMethod = choice((None, ROTATE_180))
+    if lockFactor is not None and (not isinstance(lockFactor, float | int) or lockFactor < 1):
+        raise ValueError(f"Bad lockFactor {lockFactor}, must be a positive float no less than 1")
+    if lockWidth is not None and (not isinstance(lockWidth, int) or lockWidth <= source.width):
+        raise ValueError(f"Bad lockWidth {lockWidth}, must be a positive int at least equal to source.width ({source.width})")
+    if lockHeight is not None and (not isinstance(lockHeight, int) or lockHeight <= source.height):
+        raise ValueError(f"Bad lockHeight {lockHeight}, must be a positive int at least equal to source.height ({source.height})")
+    if lockFactor and (lockWidth or lockHeight):
+        raise ValueError("Either lockFactor or lockWidth/lockHeight can be specified")
+
+    if randomRotate:  # Pad source to square for it to be rotatable 90° without visible change of orientation
+        if source.width != source.height:
+            source = await timeToThread(imagePad, source, (m := max(*source.size), m), RESAMPLING, color = 255)  # white background in grayscale
+        assert source.width == source.height
+        rotateMethod = choice((None, ROTATE_90, ROTATE_180, ROTATE_270))
     else:
         rotateMethod = None
-    inverseRotateMethod = INVERSE_TRANSPOSE[rotateMethod]
-    flip = bool(randomFlip) and choice((False, True))
+    flip: bool = bool(randomFlip) and choice((False, True))
+
+    if lockFactor and lockFactor != 1:
+        lockSize = (round(source.width * lockFactor),
+                    round(source.height * lockFactor))
+    elif lockWidth or lockHeight:
+        if not lockHeight:
+            assert lockWidth
+            if source.width == source.height:  # noqa: SIM108
+                lockSize = (lockWidth, lockWidth)
+            else:
+                lockSize = (lockWidth, round(source.height * lockWidth / source.width))
+        elif not lockWidth:
+            assert lockHeight
+            if source.width == source.height:  # noqa: SIM108
+                lockSize = (lockHeight, lockHeight)
+            else:
+                lockSize = (round(source.width * lockHeight / source.height), lockHeight)
+        else:
+            lockSize = (lockWidth, lockHeight)
+    else:
+        lockSize = source.size
+    (lockWidth, lockHeight) = lockSize
+
+    # (posX, posY) is (random) position of the key relative to the lock
+    posX = choice(range(lockWidth - source.width + 1))  # 0 if equal
+    posY = choice(range(lockHeight - source.height + 1))  # 0 if equal
+
+    if lockMask or keyMask or smooth:
+        # 2x2 pixels
+
+        (lockWidth, lockHeight) = lockSize = (lockWidth * 2, lockHeight * 2)
+
+        lockArray = await timeToThread(np.empty, lockSize, bool)  # These arrays are write-only, so we don't care about the values
+        keyArray = await timeToThread(np.empty, source.size, bool)   # Also creating empty arrays is faster than filling with 1's or 0's
+        # Also empty arrays produce recognizable pattern in images, and that allows to notice visually
+        # if some part of the image was not written to, as it should be.
+
+    else:
+        # 1x1 pixels
+
+        lockArray = await timeToThread(np.empty, lockSize, bool)  # ToDo: replace this with the commented code below that fills array with random data that fastens encryption
+        keyArray = await timeToThread(np.empty, source.size, bool)  # ToDo: apply gather() wherever possible
+
+        # lockArray = np.frombuffer(token_bytes(fieldWidth * fieldHeight), bool) \
+        #                             .reshape((fieldWidth, fieldHeight))  #, copy = True)  # Copy is needed to make it writable  # ToDo: really? check it
+
+    sourceArray = np.asarray(source, bool)
 
     # PIL/NumPy array indexes are `y` first, `x` second
     # Color False/0 is black, and True/1 is white/transparent
     if lockMask or keyMask:
+        # 2x2 pixels with masks
+
         if lockMask:
-            if lockMask.size != source.size:
-                lockMask = await to_thread(imagePad, lockMask, source.size, RESAMPLING, color = 255)  # White background in grayscale
+            if lockMask.size != lockSize:
+                # ToDo: Make sure (and assert here) that this is padding only, no resizing, because resizing 1-bit image is bad
+                # ToDo: If that's not possible, maybe stop processing key and lock images?
+                #assert lockMask.width == lock.width or lockMask.height == lock.height  # ToDo: enable after masks are properly resized
+                lockMask = await timeToThread(imagePad, lockMask, lockSize, RESAMPLING, color = 255)  # White background in grayscale
         else:
-            lockMask = imageNew(BW1, source.size, 1)  # white/transparent background
+            lockMask = imageNew(BW1, lockSize, 1)  # white/transparent background
+
         if keyMask:
             if rotateMethod is not None:
-                keyMask = await to_thread(keyMask.transpose, rotateMethod)
+                keyMask = await timeToThread(keyMask.transpose, rotateMethod)
             if flip:
-                keyMask = await to_thread(keyMask.transpose, FLIP)
+                keyMask = await timeToThread(keyMask.transpose, FLIP)
             if keyMask.size != source.size:
-                keyMask = await to_thread(imagePad, keyMask, source.size, RESAMPLING, color = 255)  # White background in grayscale
+                #assert keyMask.width == source.width or keyMask.height == source.height  # ToDo: enable after masks are properly resized
+                keyMask = await timeToThread(imagePad, keyMask, source.size, RESAMPLING, color = 255)  # White background in grayscale
         else:
             keyMask = imageNew(BW1, source.size, 1)  # white/transparent background
-        assert lockMask.size == source.size
-        assert keyMask.size == source.size
-        dimensions = (source.height * 2, source.width * 2)
-        lockArray = np.empty(dimensions, bool)
-        keyArray = np.empty(dimensions, bool)
+
         lockMaskArray = np.asarray(lockMask, bool)
         keyMaskArray = np.asarray(keyMask, bool)
+
         for ((y, x), s) in np.ndenumerate(np.asarray(source, bool)):
             if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
                 await sleep(0)
-            l = lockMaskArray[y, x].item()  # noqa: E741
-            k = keyMaskArray[y, x].item()
-            s = s.item()  # noqa: PLW2901  # pylint: disable=redefined-loop-name
-            x *= 2 ; y *= 2  # noqa: E702, PLW2901  # pylint: disable=multiple-statements, redefined-loop-name
-            (a1, a2) = BitBlock.getRandomPair(3 - l, 3 - k, 4 - s)
-            lockArray[y : y + 2, x : x + 2] = a1
-            keyArray[y : y + 2, x : x + 2] = a2
-    elif smooth:  # No lockMask/keyMask
-        dimensions = (source.height * 2, source.width * 2)
-        lockArray = np.empty(dimensions, bool)
-        keyArray = np.empty(dimensions, bool)
-        for ((y, x), s) in np.ndenumerate(np.asarray(source, bool)):
+
+            lockMaskValue = lockMaskArray[y + posY, x + posX].item()
+            keyMaskValue = keyMaskArray[y, x].item()
+            sourceValue = s.item()
+            (a1, a2) = BitBlock.getRandomPair(3 - lockMaskValue, 3 - keyMaskValue, 4 - sourceValue)
+            (lockX, lockY) = ((x + posX) * 2, (y + posY) * 2)
+            (keyX, keyY) = (x * 2, y * 2)
+            lockArray[lockY : lockY + 2, lockX : lockX + 2] = a1
+            keyArray[keyY : keyY + 2, keyX : keyX + 2] = a2
+
+    elif smooth:
+        # 2x2 pixels without masks
+
+        for ((y, x), s) in np.ndenumerate(sourceArray):
             if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
                 await sleep(0)
-            x *= 2 ; y *= 2  # noqa: E702, PLW2901  # pylint: disable=multiple-statements, redefined-loop-name
+
             (a1, a2) = BitBlock.getRandomPair(2, 2, 4)
-            lockArray[y : y + 2, x : x + 2] = a1
-            keyArray[y : y + 2, x : x + 2] = a1 if s else a2
-    else:  # 1:1 pixels
-        lockArray = np.empty(source.size, bool)
-        keyArray = np.empty(source.size, bool)
-        for ((y, x), s) in np.ndenumerate(np.asarray(source, bool)):
+            (lockX, lockY) = ((x + posX) * 2, (y + posY) * 2)
+            (keyX, keyY) = (x * 2, y * 2)
+            lockArray[lockY : lockY + 2, lockX : lockX + 2] = a1
+            keyArray[keyY : keyY + 2, keyX : keyX + 2] = a1 if s else a2
+
+    else:
+        # 1x1 pixels
+
+        for ((y, x), s) in np.ndenumerate(sourceArray):
             if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
                 await sleep(0)
-            lockArray[y, x] = r = choice((False, True))
+
+            r: bool = choice((False, True))
+            lockArray[y + posY, x + posX] = r  # ToDo: replace it with reading lockArray
             keyArray[y, x] = r if s else not r
 
     await sleep(0)
-    lockImage = ImageFromArray(lockArray)
+    lockImage = imageFromArray(lockArray)
     await sleep(0)
-    keyImage = ImageFromArray(keyArray)
+    keyImage = imageFromArray(keyArray)
     await sleep(0)
     if flip:
-        keyImage = await to_thread(keyImage.transpose, FLIP)
-    if inverseRotateMethod is not None:
-        keyImage = await to_thread(keyImage.transpose, inverseRotateMethod)
+        keyImage = await timeToThread(keyImage.transpose, FLIP)
+    if (inverseRotateMethod := INVERSE_TRANSPOSE[rotateMethod]) is not None:
+        keyImage = await timeToThread(keyImage.transpose, inverseRotateMethod)
     await sleep(0)
     finalizeImage(lockImage)
     finalizeImage(keyImage)
-    if rotateMethod is not None or flip:
-        return (lockImage, keyImage, rotateMethod, flip)  # `rotateMethod` says what to do with the key for decryption; flip after rotate!
-    return (lockImage, keyImage)
+    return (lockImage, keyImage, (posX, posY), rotateMethod, flip)  # `rotateMethod` says what to do with the key for decryption; flip after rotate!
 
 @typechecked
-async def overlay(lockImage: Image, keyImage: Image, *, rotate: Transpose | None = None, flip: bool | None = None) -> Image:
+async def overlay(lockImage: Image, keyImage: Image, *, position: tuple[int, int] = (0, 0), rotate: Transpose | None = None, flip: bool | None = None) -> Image:
     """
     Emulates precise overlaying of two 1-bit images one on top of the other,
     as if they were printed on transparent film.
     """
-    assert lockImage.mode == BW1
-    assert keyImage.mode == BW1
+    assert lockImage.mode == BW1, lockImage.mode  # ToDo: replace these asserts with proper ValueError checks
+    assert keyImage.mode == BW1, keyImage.mode
+
+    assert lockImage.width >= keyImage.width, (lockImage.size, keyImage.size)
+    assert lockImage.height >= keyImage.height, (lockImage.size, keyImage.size)
+
+    (posX, posY) = position
+    assert posX >= 0, position
+    assert posY >= 0, position
+
     if rotate is not None:
-        if isinstance(rotate, int):
-            rotate = Transpose(rotate)
-        keyImage = await to_thread(keyImage.transpose, rotate)
+        keyImage = await timeToThread(keyImage.transpose, rotate)  # ToDo: Check if timeToThread() is really helping, on a large image
     if flip:
-        keyImage = await to_thread(keyImage.transpose, FLIP)
-    assert lockImage.size == keyImage.size
-    ret = await to_thread(lambda: ImageFromArray(np.minimum(np.asarray(lockImage), np.asarray(keyImage))))
+        keyImage = await timeToThread(keyImage.transpose, FLIP)
+
+    assert keyImage.width + posX <= lockImage.width, (keyImage.size, position, lockImage.size)
+    assert keyImage.height + posY <= lockImage.height, (keyImage.size, position, lockImage.size)
+
+    if lockImage.size != keyImage.size:
+        newKeyImage = imageNew(BW1, lockImage.size, 1)  # white/transparent background
+        newKeyImage.paste(keyImage, position)
+        keyImage = newKeyImage
+
+    assert lockImage.size == keyImage.size, (lockImage.size, keyImage.size)
+    ret = await timeToThread(lambda: imageFromArray(np.minimum(np.asarray(lockImage), np.asarray(keyImage))))
     finalizeImage(ret)
     return ret
 
