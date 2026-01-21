@@ -1,4 +1,17 @@
-packages = ["Pillow", "numpy", "beartype"]
+plugins = [
+    "!codemirror",
+    "!deprecations-manager",
+    "!donkey",
+    "!py-editor",
+    "!py-game",
+    "!py-terminal"
+]
+
+packages = [
+    "Pillow",
+    "numpy",
+    "beartype"
+]
 
 sync_main_only = true
 
@@ -6,7 +19,14 @@ sync_main_only = true
 "./Steganography.py" = ""
 
 [exports]
-"Steganography" = ["encrypt", "overlay", "prepareImage"]
+"Steganography" = [
+    "encrypt",
+    "overlay",
+    "prepareImage"
+]
 
 [adapters]
-"Steganography" = [["Image", "imageToBytes", "loadImage"], ["Transpose", "None", "None"]]
+"Steganography" = [
+    ["Image", "imageToBytes", "loadImage"],
+    ["Transpose", "None", "None"]
+]

@@ -1,4 +1,18 @@
-packages = ["Pillow", "numpy", "coolname", "beartype"]
+plugins = [
+    "!codemirror",
+    "!deprecations-manager",
+    "!donkey",
+    "!py-editor",
+    "!py-game",
+    "!py-terminal",
+]
+
+packages = [
+    "Pillow",
+    "numpy",
+    "coolname",
+    "beartype",
+]
 
 [files]
 "./workerlib.py" = ""
@@ -7,4 +21,7 @@ packages = ["Pillow", "numpy", "coolname", "beartype"]
 "./gettext/ru.mo" = "./gettext/ru_RU/LC_MESSAGES/Steganography.mo"
 
 [adapters]
-"Steganography" = [["Image", "imageToBytes", "loadImage"], ["Transpose", "None", "None"]]
+"Steganography" = [
+    ["Image", "imageToBytes", "loadImage"],
+    ["Transpose", "None", "None"],
+]
