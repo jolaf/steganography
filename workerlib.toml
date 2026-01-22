@@ -1,7 +1,7 @@
 packages = [
     "Pillow",
     "numpy",
-    "beartype"
+    "beartype",
 ]
 
 sync_main_only = true
@@ -13,11 +13,11 @@ sync_main_only = true
 "Steganography" = [
     "encrypt",
     "overlay",
-    "prepareImage"
+    "prepareImage",
 ]
 
 [adapters]
 "Steganography" = [
     ["Image", "imageToBytes", "loadImage"],
-    ["Transpose", "None", "None"]
+    ["Transpose", "None", "None"],
 ]
