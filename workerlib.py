@@ -62,7 +62,7 @@ from inspect import isfunction, iscoroutinefunction, signature
 from itertools import chain
 from sys import _getframe
 from types import ModuleType
-from typing import cast, Any, Final, NoReturn
+from typing import cast, Any, Final, NoReturn, TypeAlias
 
 from pyscript import config, RUNNING_IN_WORKER
 from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
@@ -73,17 +73,17 @@ try:
 except ImportError:
     type JsProxy = Any  # type: ignore[no-redef]
 
-# We name everything starting with underscore to avoid potential conflicts with exported user functions
-type _Coroutine = Coroutine[None, None, Any]
-type _CoroutineFunction = Callable[..., _Coroutine]
-type _FunctionOrCoroutine = Callable[..., Any | _Coroutine]
-type _Adapter = tuple[type, Callable[[Any], Any | _Coroutine] | None, Callable[[Any], Any | _Coroutine] | None]
-_TransportSafe = int | float | bool | str | Buffer | Iterable | Sequence | Mapping | None  # type: ignore[type-arg]
+# We name everything starting with underscore to minimize the chance of a conflict with exported user functions
+type _Coroutine[T] = Coroutine[None, None, T]
+type _CoroutineFunction[T] = Callable[..., _Coroutine[T]]
+type _FunctionOrCoroutine[T] = Callable[..., T | _Coroutine[T]]
+type _Adapter[T] = tuple[type[T], Callable[[T], Any | _Coroutine[Any]] | None, Callable[[Any], T | _Coroutine[T]] | None]
+_TransportSafe: TypeAlias = int | float | bool | str | Buffer | Iterable | Sequence | Mapping | None  # type: ignore[type-arg]  # Using `type` or adding `[Any]` breaks `isinstance()`  # noqa: UP040
 
 try:  # To turn runtime typechecking on, add "beartype" to `packages` array in your `workerlib.toml`
     from beartype import beartype as _typechecked
 except ImportError:
-    def _typechecked(func: _FunctionOrCoroutine) -> _FunctionOrCoroutine:  # type: ignore[no-redef]
+    def _typechecked(func: _FunctionOrCoroutine[Any]) -> _FunctionOrCoroutine[Any]:  # type: ignore[no-redef]
         return func
 
 _PREFIX = ''
@@ -100,7 +100,7 @@ _EXPORTS_SECTION: Final[str] = 'exports'
 
 __all__: Sequence[str]
 __export__: Sequence[str]
-__adapters__: Sequence[_Adapter] = ()
+__adapters__: Sequence[_Adapter[Any]] = ()
 
 @_typechecked
 def _log(*args: Any) -> None:
@@ -134,7 +134,7 @@ def _importFromModule(module: str | ModuleType, qualNames: str | Iterable[str]) 
         yield obj
 
 @_typechecked
-def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str]], allowSubSequence: bool = True) -> Iterator[_Adapter]:
+def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str]], allowSubSequence: bool = True) -> Iterator[_Adapter[Any]]:
     if not isinstance(names, Sequence):
         _error(f"""Bad adapter tuple type {type(names)} for module {module.__name__}""")
     if not names:
@@ -158,10 +158,10 @@ def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str
         _error("""Adapter specification should be either [strings] or [[strings], ...], third level of inclusion is not needed'""")
 
 @_typechecked
-def _adaptersFrom(mapping: Mapping[str, Sequence[str | Sequence[str]]] | None) -> Sequence[_Adapter]:
+def _adaptersFrom(mapping: Mapping[str, Sequence[str | Sequence[str]]] | None) -> Sequence[_Adapter[Any]]:
     if not mapping:
         return ()
-    adapters: list[_Adapter] = []
+    adapters: list[_Adapter[Any]] = []
     for (moduleName, names) in mapping.items():
         module = _importModule(moduleName)
         adapters.extend(_adaptersFromSequence(module, names))
@@ -231,7 +231,7 @@ if RUNNING_IN_WORKER:  ##
         _log("Assertions are enabled")
 
     @_typechecked
-    def _workerSerialized(func: _FunctionOrCoroutine) -> _CoroutineFunction:
+    def _workerSerialized[T](func: _FunctionOrCoroutine[T]) -> _CoroutineFunction[Any]:  # pylint: disable=redefined-outer-name
         @wraps(func)
         @_typechecked
         async def workerSerializedWrapper(*args: Any, **kwargs: Any) -> Any:
@@ -247,17 +247,17 @@ if RUNNING_IN_WORKER:  ##
         return workerSerializedWrapper
 
     @_typechecked
-    def _workerLogged(func: _FunctionOrCoroutine) -> _CoroutineFunction:
+    def _workerLogged[T](func: _FunctionOrCoroutine[T]) -> _CoroutineFunction[T]:  # pylint: disable=redefined-outer-name
         @wraps(func)
         @_typechecked
-        async def workerLoggedWrapper(*args: Any, **kwargs: Any) -> Any:
+        async def workerLoggedWrapper(*args: Any, **kwargs: Any) -> T:
             try:
                 if iscoroutinefunction(func):
                     _log(f"Awaiting {func.__name__}(): {args} {kwargs}")
-                    ret = await func(*args, **kwargs)
+                    ret: T = await func(*args, **kwargs)
                 else:
                     _log(f"Calling {func.__name__}(): {args} {kwargs}")
-                    ret = func(*args, **kwargs)
+                    ret = cast(T, func(*args, **kwargs))
                 _log(f"Returned from {func.__name__}(): {ret}")
                 return ret  # noqa: TRY300
             except BaseException as ex:
@@ -266,8 +266,8 @@ if RUNNING_IN_WORKER:  ##
         return workerLoggedWrapper
 
     @_typechecked
-    def _wrap(func: _FunctionOrCoroutine) -> _CoroutineFunction:
-        return _workerSerialized(_workerLogged(_typechecked(func)))
+    def _wrap[T](func: _FunctionOrCoroutine[T]) -> _CoroutineFunction[Any]:  # pylint: disable=redefined-outer-name
+        return _workerSerialized(_workerLogged(_typechecked(func)))  # type: ignore[arg-type]  # It looks there's some bug in mypy in this matter
 
     @_workerSerialized
     @_typechecked
@@ -280,7 +280,7 @@ if RUNNING_IN_WORKER:  ##
 
     # Must be called by the importing module to actually start providing worker service
     @_typechecked
-    def export(*functions: _FunctionOrCoroutine) -> None:
+    def export(*functions: _FunctionOrCoroutine[Any]) -> None:
         target = _getframe(1).f_globals  # globals of the calling module
         target[_connectFromMain.__name__] = _connectFromMain
         exportNames: list[str] = []
@@ -341,18 +341,19 @@ else:  ##  MAIN THREAD
             self.worker = worker
 
     @_typechecked
-    def _mainSerialized(func: _CoroutineFunction, looksLike: _FunctionOrCoroutine | str | None = None) -> _CoroutineFunction:
+    def _mainSerialized[T](func: JsProxy, looksLike: _FunctionOrCoroutine[T] | str | None = None) -> _CoroutineFunction[T]:  # pylint: disable=redefined-outer-name
 
         @_typechecked
-        async def mainSerializedWrapper(*args: Any, **kwargs: Any) -> Any:
+        async def mainSerializedWrapper(*args: Any, **kwargs: Any) -> T:
             assert isinstance(func, JsProxy), type(func)
-            args = tuple([await _to_js(arg) for arg in args])  # type: ignore[unreachable]  # pylint: disable=consider-using-generator
+            args = tuple([await _to_js(arg) for arg in args])  # pylint: disable=consider-using-generator
             kwargs = {key: await _to_js(value) for (key, value) in kwargs.items()}
-            return await _to_py(await func(*args, **kwargs))
+            ret = await cast(_CoroutineFunction[T], func)(*args, **kwargs)
+            return cast(T, await _to_py(ret))
 
         if looksLike and (isfunction(looksLike) or iscoroutinefunction(looksLike)):
             return wraps(looksLike)(mainSerializedWrapper)
-        ret = wraps(func)(mainSerializedWrapper)
+        ret: _CoroutineFunction[T] = wraps(cast(_CoroutineFunction[T], func))(mainSerializedWrapper)
         if looksLike and isinstance(looksLike, str):
             ret.__name__ = looksLike
         return ret
@@ -373,7 +374,7 @@ else:  ##  MAIN THREAD
         _log(f'Looking for worker named "{workerName}"')
         worker = await workers[workerName]
         _log("Got worker, connecting")
-        data = await _mainSerialized(worker._connectFromMain, '_connectFromMain')(_CONNECT_REQUEST)  # noqa: SLF001  # pylint: disable=protected-access
+        data: Sequence[str] = await _mainSerialized(worker._connectFromMain, '_connectFromMain')(_CONNECT_REQUEST)  # noqa: SLF001  # pylint: disable=protected-access
         if not data or data[0] != _CONNECT_RESPONSE:
             _error(f"Connection to worker is misconfigured, can't continue: {type(data)}: {data!r}")
 
