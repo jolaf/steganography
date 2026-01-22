@@ -922,7 +922,6 @@ async def main() -> None:
     log("Starting app")
     sys.excepthook = mainExceptionHandler
     get_running_loop().set_exception_handler(loopExceptionHandler)
-    log("Python", pythonVersion)  # ToDo: Move it to workerlib?
     log("PyScript", pyscriptVersion)  # def sysConf() -> tuple[str] ?
     log("Pyodide", pyodideVersion)
 
@@ -934,6 +933,7 @@ async def main() -> None:
         log("Platform:", platform)
         log("CPUs:", cpus, " pthreads:", pthreads)
 
+    log("Python", pythonVersion)  # ToDo: Move it to workerlib?
     log("Pillow", pilVersion)
     log("NumPy", numpyVersion)
 
