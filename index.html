@@ -39,6 +39,7 @@
 <body>
 <script type="py" src="./main.py" config="./main.toml" target="#log"></script>
 <script type="py" worker name="workerlib" src="./workerlib.py" config="./workerlib.toml"></script>
+<mpy-config>plugins = ["!codemirror", "!deprecations-manager", "!donkey", "!py-editor", "!py-game", "!py-terminal"]</mpy-config><!-- Workaround https://github.com/pyscript/pyscript/issues/2430#issuecomment-3785280652 -->
 <div id="flexColumn100">
   <div id="flex1">
     <h1 id="title"><img alt="" src="./images/favicon.svg">Steganography<span id="location"></span></h1>
