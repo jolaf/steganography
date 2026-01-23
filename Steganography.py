@@ -177,10 +177,9 @@ def error(*args: Any) -> None:
 
 @typechecked
 async def timeToThread[T](func: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
-    print(f"# Starting {func} {args} {kwargs}")
     startTime = time()
     ret = await to_thread(func, *args, **kwargs)
-    print(f"# Completed in {time() - startTime:.3f} seconds: {func} {args} {kwargs}")  # ToDo: leave this function in permanently, but print something only it's longer than 10ms?
+    print(f"[steganography] {round((time() - startTime) * 1000)}ms: {func.__qualname__} {args} {kwargs}")  # ToDo: leave this function in permanently, but print something only it's longer than 10ms?
     return ret
 
 @typechecked

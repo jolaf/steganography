@@ -61,6 +61,7 @@ from importlib import import_module
 from inspect import isfunction, iscoroutinefunction, signature
 from itertools import chain
 from sys import _getframe
+from time import time
 from types import ModuleType
 from typing import cast, Any, Final, NoReturn, TypeAlias
 
@@ -252,13 +253,14 @@ if RUNNING_IN_WORKER:  ##
         @_typechecked
         async def workerLoggedWrapper(*args: Any, **kwargs: Any) -> T:
             try:
+                startTime = time()
                 if iscoroutinefunction(func):
                     _log(f"Awaiting {func.__name__}(): {args} {kwargs}")
                     ret: T = await func(*args, **kwargs)
                 else:
                     _log(f"Calling {func.__name__}(): {args} {kwargs}")
                     ret = cast(T, func(*args, **kwargs))
-                _log(f"Returned from {func.__name__}(): {ret}")
+                _log(f"Returned in {round((time() - startTime) * 1000)}ms from {func.__name__}(): {ret}")
                 return ret  # noqa: TRY300
             except BaseException as ex:
                 _log(f"Exception at {func.__name__}: {ex}")
