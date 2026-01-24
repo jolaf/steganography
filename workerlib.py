@@ -60,14 +60,57 @@ from functools import wraps
 from importlib import import_module
 from inspect import isfunction, iscoroutinefunction, signature
 from itertools import chain
-from sys import _getframe
+from re import findall
+from sys import platform, version as _pythonVersion, _getframe
 from time import time
 from types import ModuleType
 from typing import cast, Any, Final, NoReturn, TypeAlias
 
+try:
+    from os import process_cpu_count  # type: ignore[attr-defined]
+    _cpus: Any = process_cpu_count()
+except ImportError:
+    try:
+        from os import cpu_count
+        _cpus = cpu_count()
+    except ImportError:
+        _cpus = "UNKNOWN"
+
+try:
+    from sys import _emscripten_info  # type: ignore[attr-defined]  # pylint: disable=ungrouped-imports
+    assert platform == 'emscripten'
+    _emscriptenVersion: str | None = '.'.join(str(v) for v in _emscripten_info.emscripten_version)
+    _runtime = _emscripten_info.runtime
+    _pthreads = _emscripten_info.pthreads
+    _sharedMemory = _emscripten_info.shared_memory
+except ImportError:
+    _emscriptenVersion = _runtime = _sharedMemory = None
+    try:
+        from os import sysconf  # pylint: disable=ungrouped-imports
+        _pthreads = sysconf('SC_THREADS') > 0
+    except (ImportError, ValueError, AttributeError):
+        _pthreads = False
+
 from pyscript import config, RUNNING_IN_WORKER
 from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
 from pyscript.web import page  # pylint: disable=import-error, no-name-in-module
+
+try:  # Try to identify PyScript version
+    from pyscript import version as _pyscriptVersion  # type: ignore[attr-defined]
+except ImportError:
+    try:
+        from pyscript import __version__ as _pyscriptVersion  # type: ignore[attr-defined]
+    except ImportError:
+        try:
+            coreURL = next(element.src for element in page.find('script') if element.src.endswith('core.js'))
+            _pyscriptVersion = next(word for word in coreURL.split('/') if findall(r'\d', word))
+        except Exception:  # noqa: BLE001
+            _pyscriptVersion = "UNKNOWN"
+
+try:
+    from pyodide_js import version as _pyodideVersion  # type: ignore[import-not-found]
+except ImportError:
+    _pyodideVersion = "UNKNOWN"
 
 try:
     from pyodide.ffi import JsProxy
@@ -82,9 +125,12 @@ type _Adapter[T] = tuple[type[T], Callable[[T], Any | _Coroutine[Any]] | None, C
 _TransportSafe: TypeAlias = int | float | bool | str | Buffer | Iterable | Sequence | Mapping | None  # type: ignore[type-arg]  # Using `type` or adding `[Any]` breaks `isinstance()`  # noqa: UP040
 
 try:  # To turn runtime typechecking on, add "beartype" to `packages` array in your `workerlib.toml`
-    from beartype import beartype as _typechecked
+    from beartype import beartype as typechecked, __version__ as _beartypeVersion
+    from beartype.roar import BeartypeException
 except ImportError:
-    def _typechecked(func: _FunctionOrCoroutine[Any]) -> _FunctionOrCoroutine[Any]:  # type: ignore[no-redef]
+    _beartypeVersion = None  # type: ignore[assignment]
+
+    def typechecked(func: _FunctionOrCoroutine[Any]) -> _FunctionOrCoroutine[Any]:  # type: ignore[no-redef]
         return func
 
 _PREFIX = ''
@@ -99,26 +145,26 @@ __EXPORT__: Final[str] = '__export__'
 _ADAPTERS_SECTION: Final[str] = 'adapters'
 _EXPORTS_SECTION: Final[str] = 'exports'
 
-__all__: Sequence[str]
+__all__: Sequence[str] = ('Worker', '__export__', '__info__', 'connectToWorker', 'export', 'typechecked')  # Will be reduced below
 __export__: Sequence[str]
 __adapters__: Sequence[_Adapter[Any]] = ()
 
-@_typechecked
+@typechecked
 def _log(*args: Any) -> None:
     print(_PREFIX, *args)
 
-@_typechecked
+@typechecked
 def _error(message: str) -> NoReturn:
     raise RuntimeError(f"{_PREFIX} {message}")
 
-@_typechecked
+@typechecked
 def _importModule(moduleName: str) -> ModuleType:
     if (module := globals().get(moduleName)) is None:
         _log("Importing module", moduleName)
         globals()[moduleName] = module = import_module(moduleName)
     return module
 
-@_typechecked
+@typechecked
 def _importFromModule(module: str | ModuleType, qualNames: str | Iterable[str]) -> Iterator[Any]:
     if isinstance(module, str):
         module = _importModule(module)
@@ -134,8 +180,8 @@ def _importFromModule(module: str | ModuleType, qualNames: str | Iterable[str]) 
             obj = getattr(obj, name)
         yield obj
 
-@_typechecked
-def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str]], allowSubSequence: bool = True) -> Iterator[_Adapter[Any]]:
+@typechecked
+def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str]], allowSubSequences: bool = True) -> Iterator[_Adapter[Any]]:
     if not isinstance(names, Sequence):
         _error(f"""Bad adapter tuple type {type(names)} for module {module.__name__}""")
     if not names:
@@ -152,13 +198,13 @@ def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str
             _error(f'Bad adapter encoder {names[2]} for module {module.__name__}, must be function or coroutine or "None", got {type(decoder)}')
         _log(f"Adapter created: {decoder} => {cls} => {encoder}")
         yield (cls, encoder, decoder)
-    elif allowSubSequence:
+    elif allowSubSequences:
         for subSequence in names:
-            yield from _adaptersFromSequence(module, subSequence, allowSubSequence = False)
+            yield from _adaptersFromSequence(module, subSequence, allowSubSequences = False)
     else:
         _error("""Adapter specification should be either [strings] or [[strings], ...], third level of inclusion is not needed'""")
 
-@_typechecked
+@typechecked
 def _adaptersFrom(mapping: Mapping[str, Sequence[str | Sequence[str]]] | None) -> Sequence[_Adapter[Any]]:
     if not mapping:
         return ()
@@ -168,7 +214,7 @@ def _adaptersFrom(mapping: Mapping[str, Sequence[str | Sequence[str]]] | None) -
         adapters.extend(_adaptersFromSequence(module, names))
     return tuple(adapters)
 
-@_typechecked
+@typechecked
 async def _to_js(obj: Any) -> Any:
     for (cls, encoder, _decoder) in __adapters__:
         if isinstance(obj, cls):
@@ -187,7 +233,7 @@ async def _to_js(obj: Any) -> Any:
         return to_js(tuple([await _to_js(v) for v in obj]))  # pylint: disable=consider-using-generator
     return to_js(obj)
 
-@_typechecked
+@typechecked
 async def _to_py(obj: Any) -> Any:
     if hasattr(obj, 'to_py'):
         return await _to_py(obj.to_py())
@@ -205,11 +251,50 @@ async def _to_py(obj: Any) -> Any:
         return obj
     className = tokens[1]
     for (cls, _encoder, decoder) in __adapters__:
-        if className == cls.__name__:  # ToDo: Can't we import class by full name and use `isinstance()` ?
+        if className == cls.__name__:
             if decoder is None:
                 return cls(value)  # e.g. Enum
             return await decoder(value) if iscoroutinefunction(decoder) else decoder(value)
     _error(f"No adapter found to decode class {className}")
+
+@typechecked
+def _info() -> Sequence[str]:
+    ret: list[str] = []
+    ret.append(f"PyScript {_pyscriptVersion}")
+    ret.append(f"Pyodide {_pyodideVersion}")
+
+    if platform == 'emscripten':
+        ret.append(f"Emscripten {_emscriptenVersion}")
+        ret.append(f"Runtime: {_runtime}")
+        ret.append(f"CPUs: {_cpus}  pthreads: {_pthreads}  SharedMemory: {_sharedMemory}")
+    else:
+        ret.append(f"Platform: {platform}")
+        ret.append(f"CPUs: {_cpus}  pthreads: {_pthreads}")
+
+    ret.append(f"Python {_pythonVersion}")
+
+    if _beartypeVersion:
+        try:
+            @typechecked
+            def test() -> int:
+                return 'notInt'  # type: ignore[return-value]
+            test()
+            raise RuntimeError("Beartype v" + _beartypeVersion + " is not operating properly")
+        except BeartypeException:
+            ret.append(f"Beartype {_beartypeVersion} is up and watching, remove it from PyScript configuration to make things faster")
+    else:
+        ret.append("Runtime type checking is off")
+
+    try:
+        assert str()  # noqa: UP018
+        ret.append("Assertions are DISABLED")
+    except AssertionError:
+        ret.append("Assertions are enabled")
+
+    return tuple(ret)
+
+__info__ = _info()
+
 
                        ##
 if RUNNING_IN_WORKER:  ##
@@ -219,22 +304,13 @@ if RUNNING_IN_WORKER:  ##
 
     _log("Starting worker, sync_main_only =", config.get('sync_main_only', False))
 
-    try:
-        from beartype import __version__ as _version
-        _log("Beartype", _version, "is up and watching, remove it from worker configuration to make things faster")
-    except ImportError:
-        _log("WARNING: beartype is not available, running fast with typing unchecked")
+    for info in __info__:
+        _log(info)
 
-    try:
-        assert str()  # noqa: UP018
-        _log("Assertions are DISABLED")
-    except AssertionError:
-        _log("Assertions are enabled")
-
-    @_typechecked
+    @typechecked
     def _workerSerialized[T](func: _FunctionOrCoroutine[T]) -> _CoroutineFunction[Any]:  # pylint: disable=redefined-outer-name
         @wraps(func)
-        @_typechecked
+        @typechecked
         async def workerSerializedWrapper(*args: Any, **kwargs: Any) -> Any:
             assert not kwargs  # kwargs get passed to workers as last of args, of type `dict`
             args = await _to_py(args)
@@ -247,10 +323,10 @@ if RUNNING_IN_WORKER:  ##
             return await _to_js(ret)
         return workerSerializedWrapper
 
-    @_typechecked
+    @typechecked
     def _workerLogged[T](func: _FunctionOrCoroutine[T]) -> _CoroutineFunction[T]:  # pylint: disable=redefined-outer-name
         @wraps(func)
-        @_typechecked
+        @typechecked
         async def workerLoggedWrapper(*args: Any, **kwargs: Any) -> T:
             try:
                 startTime = time()
@@ -267,12 +343,12 @@ if RUNNING_IN_WORKER:  ##
                 raise
         return workerLoggedWrapper
 
-    @_typechecked
+    @typechecked
     def _wrap[T](func: _FunctionOrCoroutine[T]) -> _CoroutineFunction[Any]:  # pylint: disable=redefined-outer-name
-        return _workerSerialized(_workerLogged(_typechecked(func)))  # type: ignore[arg-type]  # It looks there's some bug in mypy in this matter
+        return _workerSerialized(_workerLogged(typechecked(func)))  # type: ignore[arg-type]  # It looks there's some bug in mypy in this matter
 
     @_workerSerialized
-    @_typechecked
+    @typechecked
     def _connectFromMain(data: str) -> tuple[str, ...]:
         if data == _CONNECT_REQUEST:
             _log("Connected to main thread, ready for requests")
@@ -281,7 +357,7 @@ if RUNNING_IN_WORKER:  ##
         _error(f"Connection to main thread is misconfigured, can't continue: {type(data)}({data!r})")
 
     # Must be called by the importing module to actually start providing worker service
-    @_typechecked
+    @typechecked
     def export(*functions: _FunctionOrCoroutine[Any]) -> None:
         target = _getframe(1).f_globals  # globals of the calling module
         target[_connectFromMain.__name__] = _connectFromMain
@@ -299,7 +375,7 @@ if RUNNING_IN_WORKER:  ##
         _log("Started worker, providing functions:", ', '.join(name for name in exportNamesTuple if name != _connectFromMain.__name__))
 
     # Gets called automatically if this module itself is loaded as a worker
-    @_typechecked
+    @typechecked
     def _exportFrom(mapping: Mapping[str, Iterable[str]] | None) -> None:
         exportNames = [_connectFromMain.__name__,]
         target = globals()
@@ -327,7 +403,7 @@ if RUNNING_IN_WORKER:  ##
     else:
         # If user is importing this module in a worker, they MUST call `export()` explicitly
         del _exportFrom
-        __all__ = (export.__name__,)  # noqa: PLE0604
+        __all__ = ('__info__', 'export', 'typechecked')
 
        ##
 else:  ##  MAIN THREAD
@@ -337,15 +413,15 @@ else:  ##  MAIN THREAD
 
     _PREFIX = "[main]"
 
-    @_typechecked
+    @typechecked
     class Worker:
         def __init__(self, worker: JsProxy) -> None:
             self.worker = worker
 
-    @_typechecked
+    @typechecked
     def _mainSerialized[T](func: JsProxy, looksLike: _FunctionOrCoroutine[T] | str | None = None) -> _CoroutineFunction[T]:  # pylint: disable=redefined-outer-name
 
-        @_typechecked
+        @typechecked
         async def mainSerializedWrapper(*args: Any, **kwargs: Any) -> T:
             assert isinstance(func, JsProxy), type(func)
             args = tuple([await _to_js(arg) for arg in args])  # pylint: disable=consider-using-generator
@@ -358,9 +434,10 @@ else:  ##  MAIN THREAD
         ret: _CoroutineFunction[T] = wraps(cast(_CoroutineFunction[T], func))(mainSerializedWrapper)
         if looksLike and isinstance(looksLike, str):
             ret.__name__ = looksLike
+
         return ret
 
-    @_typechecked
+    @typechecked
     async def connectToWorker(workerName: str | None = None) -> Worker:
         global __adapters__  # noqa: PLW0603  # pylint: disable=global-statement
         if not __adapters__:
@@ -391,4 +468,4 @@ else:  ##  MAIN THREAD
         return ret
 
     assert not hasattr(globals(), __EXPORT__), getattr(globals(), __EXPORT__)
-    __all__ = (Worker.__name__, connectToWorker.__name__)  # noqa: PLE0604
+    __all__ = ('Worker', '__info__', 'connectToWorker', 'typechecked')

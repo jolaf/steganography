@@ -16,75 +16,14 @@ from itertools import chain
 from pathlib import Path
 from re import findall, match
 import sys
-from sys import platform, version as pythonVersion
 from traceback import extract_tb
 from types import TracebackType  # noqa: TC003
 from typing import cast, Any, ClassVar, Final
-
-try:
-    from os import process_cpu_count  # type: ignore[attr-defined]
-    cpus: Any = process_cpu_count()
-except ImportError:
-    try:
-        from os import cpu_count
-        cpus = cpu_count()
-    except ImportError:
-        cpus = "UNKNOWN"
-
-try:
-    from sys import _emscripten_info  # type: ignore[attr-defined]  # pylint: disable=ungrouped-imports
-    assert platform == 'emscripten'
-    emscriptenVersion: str | None = '.'.join(str(v) for v in _emscripten_info.emscripten_version)
-    runtime = _emscripten_info.runtime
-    pthreads = _emscripten_info.pthreads
-    sharedMemory = _emscripten_info.shared_memory
-except ImportError:
-    emscriptenVersion = runtime = sharedMemory = None
-    try:
-        from os import sysconf  # pylint: disable=ungrouped-imports
-        pthreads = sysconf('SC_THREADS') > 0
-    except (ImportError, ValueError, AttributeError):
-        pthreads = False
-
-try:
-    from beartype import beartype as typechecked, __version__ as beartypeVersion
-    from beartype.roar import BeartypeException
-except ImportError:
-    print(PREFIX, "WARNING: beartype is not available, running fast with typing unchecked")
-    beartypeVersion = None  # type: ignore[assignment]
-
-    def typechecked(func: Callable[..., Any]) -> Callable[..., Any]:  # type: ignore[no-redef]
-        return func
-
-try:
-    from coolname import generate_slug  # type: ignore[attr-defined]
-
-    @typechecked
-    def getDefaultTaskName() -> str:
-        return cast(str, generate_slug(2))
-except ImportError:
-    print(PREFIX, 'WARNING: coolname is not available, using "steganography" as default task name')
-
-    @typechecked
-    def getDefaultTaskName() -> str:
-        return "steganography"
 
 from pyscript import document, fetch, when
 from pyscript import storage, Storage
 from pyscript.web import page, Element  # pylint: disable=import-error, no-name-in-module
 from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
-
-try:  # Try to identify PyScript version
-    from pyscript import version as pyscriptVersion  # type: ignore[attr-defined]
-except ImportError:
-    try:
-        from pyscript import __version__ as pyscriptVersion  # type: ignore[attr-defined]
-    except ImportError:
-        try:
-            coreURL = next(element.src for element in page.find('script') if element.src.endswith('core.js'))
-            pyscriptVersion = next(word for word in coreURL.split('/') if findall(r'\d', word))
-        except Exception:  # noqa: BLE001
-            pyscriptVersion = "UNKNOWN"
 
 from js import location, Blob, CSSStyleSheet, Event, Node, NodeFilter, Text, Uint8Array, URL
 from pyodide.ffi import JsNull, JsProxy  # pylint: disable=import-error, no-name-in-module
@@ -112,15 +51,23 @@ type Blob = JsProxy  # type: ignore[no-redef]  # ToDo: File a bug about this
 type Event = JsProxy  # type: ignore[no-redef]
 type Node = JsProxy  # type: ignore[no-redef]
 
-try:
-    from pyodide_js import version as pyodideVersion  # type: ignore[import-not-found]
-except ImportError:
-    pyodideVersion = "UNKNOWN"
+from workerlib import connectToWorker, typechecked, __info__, Worker
 
 from numpy import __version__ as numpyVersion
 from PIL import __version__ as pilVersion
 
-from workerlib import connectToWorker, Worker
+try:
+    from coolname import generate_slug  # type: ignore[attr-defined]
+
+    @typechecked
+    def getDefaultTaskName() -> str:
+        return cast(str, generate_slug(2))
+except ImportError:
+    print(PREFIX, 'WARNING: coolname is not available, using "steganography" as default task name')
+
+    @typechecked
+    def getDefaultTaskName() -> str:
+        return "steganography"
 
 from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, Image, Transpose
 from Steganography import encrypt, overlay, prepareImage  # For extracting options only
@@ -922,36 +869,10 @@ async def main() -> None:
     log("Starting app")
     sys.excepthook = mainExceptionHandler
     get_running_loop().set_exception_handler(loopExceptionHandler)
-    log("PyScript", pyscriptVersion)  # def sysConf() -> tuple[str] ?
-    log("Pyodide", pyodideVersion)
-
-    if platform == 'emscripten':
-        log("Emscripten", emscriptenVersion)
-        log("Runtime:", runtime)
-        log("CPUs:", cpus, " pthreads:", pthreads, " SharedMemory:", sharedMemory)
-    else:
-        log("Platform:", platform)
-        log("CPUs:", cpus, " pthreads:", pthreads)
-
-    log("Python", pythonVersion)  # ToDo: Move it to workerlib?
+    for info in __info__:
+        log(info)
     log("Pillow", pilVersion)
     log("NumPy", numpyVersion)
-
-    if beartypeVersion:
-        try:
-            @typechecked
-            def test() -> int:
-                return 'notInt'  # type: ignore[return-value]
-            test()
-            raise RuntimeError("Beartype v" + beartypeVersion + " is not operating properly")
-        except BeartypeException:
-            log("Beartype", beartypeVersion, "is up and watching, remove it from PyScript configuration to make things faster")
-
-    try:
-        assert str()  # noqa: UP018
-        log("Assertions are DISABLED")
-    except AssertionError:
-        log("Assertions are enabled")
 
     await repaint()
     await ImageBlock.init()
