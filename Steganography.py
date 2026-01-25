@@ -19,6 +19,9 @@ try:
     from PIL.ImageMode import getmode as imageGetMode
     from PIL.ImageOps import pad as imagePad, scale as imageScale
     from PIL._typing import StrOrBytesPath
+    from PIL import Image as _Image
+    _Image.MAX_IMAGE_PIXELS = None  # Avoiding DecompressionBombWarning
+    del _Image
 except ImportError as ex:
     raise ImportError(f"{type(ex).__name__}: {ex}\n\nThis module requires Pillow, please install v11.3 or later: https://pypi.org/project/pillow/\n") from ex
 
@@ -179,7 +182,9 @@ def error(*args: Any) -> None:
 async def timeToThread[T](func: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
     startTime = time()
     ret = await to_thread(func, *args, **kwargs)
-    print(f"[steganography] {round((time() - startTime) * 1000)}ms: {func.__qualname__} {args} {kwargs}")  # ToDo: leave this function in permanently, but print something only it's longer than 10ms?
+    dt = time() - startTime
+    dts = f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
+    print(f"[steganography] {dts}: {func.__qualname__} {args} {kwargs}")
     return ret
 
 @typechecked
@@ -360,16 +365,16 @@ async def encrypt(source: Image,  # noqa: C901
 
         (lockWidth, lockHeight) = lockSize = (lockWidth * 2, lockHeight * 2)
 
-        lockArray = await timeToThread(np.empty, lockSize, bool)  # These arrays are write-only, so we don't care about the values
-        keyArray = await timeToThread(np.empty, source.size, bool)   # Also creating empty arrays is faster than filling with 1's or 0's
+        lockArray = np.empty(lockSize, bool)  # These arrays are write-only, so we don't care about the values
+        keyArray = np.empty(source.size, bool)   # Also creating empty arrays is faster than filling with 1's or 0's
         # Also empty arrays produce recognizable pattern in images, and that allows to notice visually
         # if some part of the image was not written to, as it should be.
 
     else:
         # 1x1 pixels
 
-        lockArray = await timeToThread(np.empty, lockSize, bool)  # ToDo: replace this with the commented code below that fills array with random data that fastens encryption
-        keyArray = await timeToThread(np.empty, source.size, bool)  # ToDo: apply gather() wherever possible
+        lockArray = np.empty(lockSize, bool)  # ToDo: replace this with the commented code below that fills array with random data that fastens encryption
+        keyArray = np.empty(source.size, bool)  # ToDo: apply gather() wherever possible
 
         # lockArray = np.frombuffer(token_bytes(fieldWidth * fieldHeight), bool) \
         #                             .reshape((fieldWidth, fieldHeight))  #, copy = True)  # Copy is needed to make it writable  # ToDo: really? check it

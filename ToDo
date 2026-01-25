@@ -9,3 +9,5 @@ Create build.py, freeze dependency versions!
 File "might not support" bug against Pyodide
 Ask for assertions in PyScript
 File a bug against PyScript about UI freezing when large image is resized in a worker
+
+# 301s

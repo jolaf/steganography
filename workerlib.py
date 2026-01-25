@@ -336,7 +336,9 @@ if RUNNING_IN_WORKER:  ##
                 else:
                     _log(f"Calling {func.__name__}(): {args} {kwargs}")
                     ret = cast(T, func(*args, **kwargs))
-                _log(f"Returned in {round((time() - startTime) * 1000)}ms from {func.__name__}(): {ret}")
+                dt = time() - startTime
+                dts = f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
+                _log(f"Returned in {dts} from {func.__name__}(): {ret}")
                 return ret  # noqa: TRY300
             except BaseException as ex:
                 _log(f"Exception at {func.__name__}: {ex}")

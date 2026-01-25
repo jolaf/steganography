@@ -16,6 +16,7 @@ from itertools import chain
 from pathlib import Path
 from re import findall, match
 import sys
+from time import time
 from traceback import extract_tb
 from types import TracebackType  # noqa: TC003
 from typing import cast, Any, ClassVar, Final
@@ -589,6 +590,7 @@ class ImageBlock:
 
     @classmethod
     async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
+        startTime = time()
         log("Started pipeline")
         assert cls.worker
         ret = await cls.process(Stage.PROCESSED_SOURCE,
@@ -616,7 +618,10 @@ class ImageBlock:
                                 options = options)
         for imageBlock in cls.imageBlocks.values():
             imageBlock.dirty = False
-        log("Completed pipeline")
+
+        dt = time() - startTime
+        dts = f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
+        log(f"Completed pipeline in {dts}")
 
     def __init__(self, stage: Stage) -> None:
         self.stage = stage
