@@ -383,13 +383,13 @@ async def encrypt(source: Image,  # noqa: C901
     (lockWidth, lockHeight) = lockSize
 
     # (posX, posY) is (random) position of the key relative to the lock
-    posX = choice(range(lockWidth - source.width + 1))  # 0 if equal
+    posX = choice(range(lockWidth - source.width + 1))  # 0 if equal  # ToDo: instead of fully random position, make it along the border
     posY = choice(range(lockHeight - source.height + 1))  # 0 if equal
 
     if lockMask or keyMask or smooth:
         # 2x2 pixels
 
-        N = 2
+        N = 2  # pylint: disable=redefined-outer-name
         (lockWidth, lockHeight) = lockSize = (lockWidth * N, lockHeight * N)
         (keyWidth, keyHeight) = keySize = (source.width * N, source.height * N)
 
@@ -455,19 +455,22 @@ async def encrypt(source: Image,  # noqa: C901
     elif smooth:
         # 2x2 pixels without masks
 
-        for ((y, x), s) in np.ndenumerate(sourceArray):
-            if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
-                await sleep(0)
+        for lockY in range(0, lockHeight, N):
+            for lockX in range(0, lockWidth, N):
+                if lockX == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
+                    await sleep(0)
 
-            (a1, a2) = BitBlock.getRandomPair(2, 2, 4)
-            (lockX, lockY) = ((x + posX) * N, (y + posY) * N)
-            (keyX, keyY) = (x * N, y * N)
-            try:
+                (a1, a2) = BitBlock.getRandomPair(2, 2, 4)
                 lockArray[lockY : lockY + N, lockX : lockX + N] = a1
+                x = lockX // N - posX
+                if x < 0 or x >= source.width:
+                    continue
+                y = lockY // N - posY
+                if y < 0 or y >= source.height:
+                    continue
+                s = sourceArray[y, x]
+                (keyX, keyY) = (x * N, y * N)
                 keyArray[keyY : keyY + N, keyX : keyX + N] = a1 if s else a2
-            except ValueError:
-                print('#',x, y, s, a1, a2, lockX, lockY, keyX, keyY)
-                raise
 
     else:
         # 1x1 pixels
