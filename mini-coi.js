@@ -2,7 +2,7 @@
 /*! mini-coi - Andrea Giammarchi and contributors, licensed under MIT */
 /*! Downloaded from https://raw.githubusercontent.com/WebReflection/mini-coi/main/mini-coi.js */
 /*! See https://github.com/WebReflection/mini-coi#readme */
-/*! See https://docs.pyscript.net/2025.11.2/user-guide/workers/#http-headers */
+/*! See https://docs.pyscript.net/2026.1.1/user-guide/workers/#http-headers */
 (({ document: d, navigator: { serviceWorker: s } }) => {
   if (d) {
     const { currentScript: c } = d;

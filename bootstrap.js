@@ -49,8 +49,8 @@ addEventListener('py:done', () => {
 
 const consoleWarn = console.warn;
 console.warn = function (...args) {
-    if (args.length > 0 && /^Pyodide.*might not support/.test(args[0])) {
-        return;  // Avoiding stupid useless warnings during PyScript booting
+    if (args.length > 0 && /^Pyodide \S+ might not support (beartype|coolname)/.test(args[0])) {
+        return;  // Avoiding annoying warnings about well-behaving packages (main thread only, unfortunately)
     }
     consoleWarn(...args);
 };
