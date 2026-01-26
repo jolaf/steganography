@@ -312,34 +312,46 @@ if RUNNING_IN_WORKER:  ##
         @wraps(func)
         @typechecked
         async def workerSerializedWrapper(*args: Any, **kwargs: Any) -> Any:
-            assert not kwargs  # kwargs get passed to workers as last of args, of type `dict`
+            @typechecked
+            def hasKwargs(func: _FunctionOrCoroutine[T], *args: Any) -> bool:
+                if not args:
+                    return False
+                lastArg = args[-1]
+                if not isinstance(lastArg, dict):
+                    return False
+                if any(not isinstance(key, str) for key in lastArg):
+                    return False
+                funcParams = signature(func).parameters
+                if any(param.kind == param.VAR_KEYWORD for param in funcParams.values()):
+                    return True  # If `func` has a `**kwargs` argument, any str-keyed dictionary would fit
+                paramNames = {paramName for (paramName, param) in funcParams.items() if param.kind in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY)}
+                return all(argName in paramNames for argName in lastArg)  # If `func` accepts keyword arguments, make sure all keys in `args[-1]` are among them
+
+            assert not kwargs  # `kwargs` get passed to workers as the last of `args`, of type `dict`
             args = await _to_py(args)
-            if any(param.kind in (param.POSITIONAL_OR_KEYWORD, param.KEYWORD_ONLY, param.VAR_KEYWORD)
-                        for param in signature(func).parameters.values()) \
-                    and args and isinstance(args[-1], dict):  # If `func` accepts keyword arguments, extract them from last of `args`
-                kwargs = args[-1]
-                args = args[:-1]
+            if hasKwargs(func, *args):
+                (args, kwargs) = (args[:-1], args[-1])  # If `func` accepts keyword arguments, extract them from the last of `args`
             ret = await func(*args, **kwargs) if iscoroutinefunction(func) else func(*args, **kwargs)
             return await _to_js(ret)
         return workerSerializedWrapper
 
     @typechecked
-    def _workerLogged[T](func: _FunctionOrCoroutine[T]) -> _CoroutineFunction[T]:  # pylint: disable=redefined-outer-name
+    def _workerLogged[T](func: _FunctionOrCoroutine[T]) -> _CoroutineFunction[_Timed[T]]:  # pylint: disable=redefined-outer-name
         @wraps(func)
         @typechecked
-        async def workerLoggedWrapper(*args: Any, **kwargs: Any) -> T:
+        async def workerLoggedWrapper(*args: Any, **kwargs: Any) -> _Timed[T]:
             try:
+                elapsed = _elapsedTime(startTime) if (startTime := kwargs.pop(_START_TIME, None)) else ''
                 startTime = time()
                 if iscoroutinefunction(func):
-                    _log(f"Awaiting {func.__name__}(): {args} {kwargs}")
+                    _log(f"{f"Passing arguments {elapsed}, awaiting" if elapsed else "Awaiting"} {func.__name__}(): {args} {kwargs}")
                     ret: T = await func(*args, **kwargs)
                 else:
-                    _log(f"Calling {func.__name__}(): {args} {kwargs}")
-                    ret = cast(T, func(*args, **kwargs))
-                dt = time() - startTime
-                dts = f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
-                _log(f"Returned in {dts} from {func.__name__}(): {ret}")
-                return ret  # noqa: TRY300
+                    assert isfunction(func), func
+                    _log(f"{f"Passing arguments {elapsed}, calling" if elapsed else "Calling"} {func.__name__}(): {args} {kwargs}")
+                    ret = func(*args, **kwargs)
+                _log(f"Returned in {_elapsedTime(startTime)} from {func.__name__}(): {ret}")
+                return (_START_TIME, (time(), ret))  # Starting calculating time it would take to return the data to main thread
             except BaseException as ex:
                 _log(f"Exception at {func.__name__}: {ex}")
                 raise
@@ -351,7 +363,7 @@ if RUNNING_IN_WORKER:  ##
 
     @_workerSerialized
     @typechecked
-    def _connectFromMain(data: str) -> tuple[str, ...]:
+    def _connectFromMain(data: str, **_kwargs: Any) -> tuple[str, ...]:
         if data == _CONNECT_REQUEST:
             _log("Connected to main thread, ready for requests")
             assert __export__, __export__
@@ -405,7 +417,7 @@ if RUNNING_IN_WORKER:  ##
     else:
         # If user is importing this module in a worker, they MUST call `export()` explicitly
         del _exportFrom
-        __all__ = ('__info__', 'export', 'typechecked')
+        __all__ = ('__info__', '__short_info__', '_elapsedTime', 'export', 'typechecked')
 
        ##
 else:  ##  MAIN THREAD
@@ -426,10 +438,16 @@ else:  ##  MAIN THREAD
         @typechecked
         async def mainSerializedWrapper(*args: Any, **kwargs: Any) -> T:
             assert isinstance(func, JsProxy), type(func)
-            args = tuple([await _to_js(arg) for arg in args])  # pylint: disable=consider-using-generator
-            kwargs = {key: await _to_js(value) for (key, value) in kwargs.items()}
-            ret = await cast(_CoroutineFunction[T], func)(*args, **kwargs)
-            return cast(T, await _to_py(ret))
+            startTime = time()
+            jArgs = await _to_js(args)  # pylint: disable=consider-using-generator
+            jKwArgs = await _to_js(kwargs)
+            jKwArgs[_START_TIME] = startTime
+            ret = await cast(_CoroutineFunction[T], func)(*jArgs, **jKwArgs)
+            ret = await _to_py(ret)
+            if isinstance(ret, tuple) and ret and ret[0] == _START_TIME:
+                (startTime, ret) = ret[1]
+                _log(f"Passing return value {_elapsedTime(startTime)}")
+            return ret
 
         if looksLike and (isfunction(looksLike) or iscoroutinefunction(looksLike)):
             return wraps(looksLike)(mainSerializedWrapper)
@@ -470,4 +488,4 @@ else:  ##  MAIN THREAD
         return ret
 
     assert not hasattr(globals(), __EXPORT__), getattr(globals(), __EXPORT__)
-    __all__ = ('Worker', '__info__', 'connectToWorker', 'typechecked')
+    __all__ = ('Worker', '__info__', '__short_info__', '_elapsedTime', 'connectToWorker', 'typechecked')

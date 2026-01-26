@@ -15,7 +15,8 @@ from time import time
 from typing import cast, Any, ClassVar, Final, IO, Literal
 
 try:
-    from PIL.Image import fromarray as imageFromArray, new as imageNew, open as imageOpen, Dither, Image, Resampling, Transpose
+    from PIL.Image import fromarray as imageFromArray, new as imageNew, open as imageOpen
+    from PIL.Image import Dither, Image, Resampling, Transpose
     from PIL.ImageMode import getmode as imageGetMode
     from PIL.ImageOps import pad as imagePad, scale as imageScale
     from PIL._typing import StrOrBytesPath
@@ -179,12 +180,15 @@ def error(*args: Any) -> None:
     sysExit(1)
 
 @typechecked
+def elapsedTime(startTime: float) -> str:
+    dt = time() - startTime
+    return f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
+
+@typechecked
 async def timeToThread[T](func: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
     startTime = time()
     ret = await to_thread(func, *args, **kwargs)
-    dt = time() - startTime
-    dts = f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
-    print(f"[steganography] {dts}: {func.__qualname__} {args} {kwargs}")
+    print(f"[steganography] {elapsedTime(startTime)}: {func.__qualname__} {args} {kwargs}")
     return ret
 
 @typechecked
@@ -203,8 +207,13 @@ async def loadImage(source: ImagePath, fileName: str | None = None) -> Image:
 
 @typechecked
 async def saveImage(image: Image, path: ImagePath) -> None:
-    await timeToThread(image.save, path, getImageFormatFromExtension(path), optimize = True,
-               transparency = 1 if image.mode == BW1 else None)  # `transparency` here sets the index of the color to make transparent, 1 is usually white
+    kwargs = {
+        'optimize': True,  # Smallest size but longest compression time
+        'transparency': 1,  # Index of the color to make transparent, 1 is usually white
+    } if image.mode == BW1 else {
+        'compress_level': 1,  # Best speed but minimum compression
+    }
+    await timeToThread(image.save, path, getImageFormatFromExtension(path), **kwargs)
 
 @typechecked
 async def imageToBytes(image: Image) -> Buffer:

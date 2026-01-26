@@ -52,7 +52,7 @@ type Blob = JsProxy  # type: ignore[no-redef]  # ToDo: File a bug about this
 type Event = JsProxy  # type: ignore[no-redef]
 type Node = JsProxy  # type: ignore[no-redef]
 
-from workerlib import connectToWorker, typechecked, __info__, Worker
+from workerlib import connectToWorker, typechecked, _elapsedTime as elapsedTime, __info__, Worker
 
 from numpy import __version__ as numpyVersion
 from PIL import __version__ as pilVersion
@@ -516,6 +516,7 @@ class ImageBlock:
         cls.PROCESS_OPTIONS = {func: cls.extractOptions(func) for func in (encrypt, overlay, prepareImage)}
         for stage in Stage:
             cls.imageBlocks[stage] = ImageBlock(stage)
+        getElementByID('template').remove()
         for (stage, block) in cls.imageBlocks.items():
             block.source = cls.imageBlocks.get(cls.SOURCES.get(stage))  # type: ignore[arg-type]
         cls.worker = await connectToWorker()
@@ -544,6 +545,7 @@ class ImageBlock:
                       optionalSourceStages: Stage | Iterable[Stage] | None = None,
                       affectedStages: Stage | Iterable[Stage] | None = None,
                       options: Iterable[str] | Mapping[str, Any] = ()) -> tuple[tuple[int, int], Transpose | None, bool] | None:
+        startTime = time()
         sources = tuple(cls.imageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.imageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         optionalSources = tuple(cls.imageBlocks[stage] for stage in ((optionalSourceStages,) if isinstance(optionalSourceStages, Stage) else optionalSourceStages or ()))
@@ -580,13 +582,14 @@ class ImageBlock:
             for (target, image) in zip(targets, retImages, strict = True):
                 target.completeOperation(image, await imageToBytes(image))
             await repaint()
-            if len(ret) > len(targets):
-                return ret[len(targets):]  # type: ignore[no-any-return]
+            ret = ret[len(targets):] if len(ret) > len(targets) else None
+            log(f"Completed process() in {elapsedTime(startTime)}")
         except Exception as ex:  # noqa : BLE001
             for target in targets:
                 target.error(_("processing image"), ex)
             await repaint()
-        return None
+            ret = None
+        return cast(tuple[tuple[int, int], Transpose | None, bool] | None, ret)
 
     @classmethod
     async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
@@ -619,9 +622,7 @@ class ImageBlock:
         for imageBlock in cls.imageBlocks.values():
             imageBlock.dirty = False
 
-        dt = time() - startTime
-        dts = f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
-        log(f"Completed pipeline in {dts}")
+        log(f"Completed pipeline in {elapsedTime(startTime)}")
 
     def __init__(self, stage: Stage) -> None:
         self.stage = stage

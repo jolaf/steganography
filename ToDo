@@ -10,4 +10,10 @@ File "might not support" bug against Pyodide
 Ask for assertions in PyScript
 File a bug against PyScript about UI freezing when large image is resized in a worker
 
-# 301s
+# pipeline 301s, 295s
+
+# prepareImage 696ms
+# encrypt 205ms
+
+Image.save() should use {'optimize': True, 'transparency': None} only for BW1 images
+Passing arguments took 138ms CUT HERE for prepareImage()
