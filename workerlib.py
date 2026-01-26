@@ -60,23 +60,38 @@ from functools import wraps
 from importlib import import_module
 from inspect import isclass, isfunction, iscoroutinefunction, signature
 from itertools import chain
-from re import findall
+from re import search
 from sys import platform, version as _pythonVersion, _getframe
 from time import time
 from types import ModuleType
 from typing import cast, Any, Final, NoReturn, TypeAlias
 
-try:
+from pyscript import config, RUNNING_IN_WORKER
+from pyscript.web import page  # pylint: disable=import-error, no-name-in-module
+
+# We name everything starting with `_` underscore to minimize the chance of a conflict with exported user functions
+type _Coroutine[T] = Coroutine[None, None, T]
+type _CoroutineFunction[T] = Callable[..., _Coroutine[T]]
+type _FunctionOrCoroutine[T] = Callable[..., T | _Coroutine[T]]
+type _Adapter[T] = tuple[type[T], Callable[[T], Any | _Coroutine[Any]] | None, Callable[[Any], T | _Coroutine[T]] | None]
+type _Timed[T] = tuple[str, tuple[float, T]]
+_TransportSafe: TypeAlias = int | float | bool | str | Buffer | Iterable | Sequence | Mapping | None  # type: ignore[type-arg]  # Using `type` or adding `[Any]` breaks `isinstance()`  # noqa: UP040
+
+try:  # Getting CPU count
     from os import process_cpu_count  # type: ignore[attr-defined]
-    _cpus: Any = process_cpu_count()
-except ImportError:
+    _cpus: Any = process_cpu_count()  # Not available on Windows and macOS
+    if not _cpus:  # pylint: disable=consider-using-assignment-expr
+        raise ValueError  # noqa: TRY301
+except (ImportError, ValueError):
     try:
         from os import cpu_count
         _cpus = cpu_count()
-    except ImportError:
+        if not _cpus:  # pylint: disable=consider-using-assignment-expr
+            raise ValueError  # noqa: TRY301  # pylint: disable=raise-missing-from
+    except (ImportError, ValueError):
         _cpus = "UNKNOWN"
 
-try:
+try:  # Getting platform configuration
     from sys import _emscripten_info  # type: ignore[attr-defined]  # pylint: disable=ungrouped-imports
     assert platform == 'emscripten'
     _emscriptenVersion: str | None = '.'.join(str(v) for v in _emscripten_info.emscripten_version)
@@ -86,27 +101,25 @@ try:
 except ImportError:
     _emscriptenVersion = _runtime = _sharedMemory = None
     try:
-        from os import sysconf  # pylint: disable=ungrouped-imports
+        from os import sysconf  # Not available on Windows  # pylint: disable=ungrouped-imports
         _pthreads = sysconf('SC_THREADS') > 0
     except (ImportError, ValueError, AttributeError):
         _pthreads = False
 
-from pyscript import config, RUNNING_IN_WORKER
-from pyscript.web import page  # pylint: disable=import-error, no-name-in-module
-
-try:  # Try to identify PyScript version
+try:  # Getting PyScript version
     from pyscript import version as _pyscriptVersion  # type: ignore[attr-defined]
 except ImportError:
     try:
         from pyscript import __version__ as _pyscriptVersion  # type: ignore[attr-defined]
     except ImportError:
         try:
-            coreURL = next(element.src for element in page.find('script') if element.src.endswith('core.js'))
-            _pyscriptVersion = next(word for word in coreURL.split('/') if findall(r'\d', word))
+            scriptElement = next(e for e in page.find('script') if search(r'pyscript.*core\.js$', e.src))
+            _pyscriptVersion = scriptElement.getAttribute('data-version') or \
+                    next(word for word in scriptElement.src.split('/') if search(r'\d', word))
         except Exception:  # noqa: BLE001
             _pyscriptVersion = "UNKNOWN"
 
-try:
+try:  # Getting Pyodide version
     from pyodide_js import version as _pyodideVersion  # type: ignore[import-not-found]
 except ImportError:
     _pyodideVersion = "UNKNOWN"
@@ -115,14 +128,6 @@ try:
     from pyodide.ffi import JsProxy
 except ImportError:
     type JsProxy = Any  # type: ignore[no-redef]
-
-# We name everything starting with underscore to minimize the chance of a conflict with exported user functions
-type _Coroutine[T] = Coroutine[None, None, T]
-type _CoroutineFunction[T] = Callable[..., _Coroutine[T]]
-type _FunctionOrCoroutine[T] = Callable[..., T | _Coroutine[T]]
-type _Adapter[T] = tuple[type[T], Callable[[T], Any | _Coroutine[Any]] | None, Callable[[Any], T | _Coroutine[T]] | None]
-type _Timed[T] = tuple[str, tuple[float, T]]
-_TransportSafe: TypeAlias = int | float | bool | str | Buffer | Iterable | Sequence | Mapping | None  # type: ignore[type-arg]  # Using `type` or adding `[Any]` breaks `isinstance()`  # noqa: UP040
 
 try:  # To turn runtime typechecking on, add "beartype" to `packages` array in your `workerlib.toml`
     from beartype import beartype as typechecked, __version__ as _beartypeVersion
@@ -245,9 +250,9 @@ async def _to_js(obj: Any) -> Any:
             return (_ADAPTER_PREFIX + cls.__name__, value)  # Encoded class name is NOT the name of type of object being encoded, but the name of the adapter to use to decode the object on the other side
     if not isinstance(obj, _TransportSafe):
         _error(f"No adapter found for class {type(obj)}, and transport layer (JavaScript structured clone) would not accept it as is, see https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm")
-    if isinstance(obj, str | Buffer):
+    if isinstance(obj, str | Buffer):  # Avoid being converted to `tuple` being an `Iterable`
         return obj
-    if isinstance(obj, Mapping):
+    if isinstance(obj, Mapping):  # Should be above checking for `Iterable`, being an `Iterable` too
         return {await _to_js(k): await _to_js(v) for (k, v) in obj.items()}
     if isinstance(obj, Iterable):
         return tuple([await _to_js(v) for v in obj])  # pylint: disable=consider-using-generator
@@ -257,12 +262,13 @@ async def _to_js(obj: Any) -> Any:
 async def _to_py(obj: Any) -> Any:
     if hasattr(obj, 'to_py'):
         return await _to_py(obj.to_py())
-    if isinstance(obj, str | Buffer):
+    if isinstance(obj, str | Buffer):  # Avoid being converted to `tuple` being an `Iterable`
         return obj
-    if isinstance(obj, Mapping):
+    if isinstance(obj, Mapping):  # Should be above checking for `Iterable`, being an `Iterable` too
         return {await _to_py(k): await _to_py(v) for (k, v) in obj.items()}
     if isinstance(obj, Iterable):
         obj = tuple([await _to_py(v) for v in obj])  # pylint: disable=consider-using-generator
+    # Checking for adapters:
     if not isinstance(obj, tuple) or len(obj) != 2:
         return obj
     (name, value) = obj
