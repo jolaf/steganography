@@ -216,7 +216,7 @@ async def saveImage(image: Image, path: ImagePath) -> None:
     await timeToThread(image.save, path, getImageFormatFromExtension(path), **kwargs)
 
 @typechecked
-async def imageToBytes(image: Image) -> Buffer:
+async def imageToBytes(image: Image) -> memoryview:
     """
     Returns the `Image` as bytes `Buffer` that can be written to a file
     with extension corresponding to image format.
@@ -231,7 +231,10 @@ def imageToJS(image: Image) -> Sequence[Any]:  # ToDo: Rewrite using dict() for 
 
 @typechecked
 def imageFromJS(serialized: Sequence[Any]) -> Image:
-    return imageFromBuffer(*serialized)
+    image = imageFromBuffer(*serialized)
+    if not image.format:
+        image.format = getImageFormatFromExtension('')
+    return image
 
 @typechecked
 def hasAlpha(image: Image) -> bool:
