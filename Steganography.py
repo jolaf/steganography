@@ -9,7 +9,7 @@ from itertools import product
 from math import factorial as f
 from mimetypes import guess_type
 from re import split
-from secrets import choice  #, token_bytes
+from secrets import choice, token_bytes
 from sys import argv, exit as sysExit, stderr
 from time import time
 from typing import cast, Any, ClassVar, Final, IO, Literal
@@ -20,9 +20,6 @@ try:
     from PIL.ImageMode import getmode as imageGetMode
     from PIL.ImageOps import pad as imagePad, scale as imageScale
     from PIL._typing import StrOrBytesPath
-    from PIL import Image as _Image
-    _Image.MAX_IMAGE_PIXELS = None  # Avoiding DecompressionBombWarning
-    del _Image
 except ImportError as ex:
     raise ImportError(f"{type(ex).__name__}: {ex}\n\nThis module requires Pillow, please install v11.3 or later: https://pypi.org/project/pillow/\n") from ex
 
@@ -41,6 +38,7 @@ except ImportError:
 type ImagePath = StrOrBytesPath | Buffer | IO[bytes] | BytesIO  # The last one is needed for beartype, though it shouldn't be
 
 PNG: Final[str] = 'PNG'
+
 BW1: Final[str] = '1'
 GRAYSCALE: Final[str] = 'L'
 
@@ -71,6 +69,7 @@ MAPPING_MODE_PARAMETERS: Final[Sequence[Mapping[str, str | int]]] = (
 RESAMPLING = Resampling.LANCZOS
 
 FLIP = Transpose.FLIP_LEFT_RIGHT
+
 ROTATE_90 = Transpose.ROTATE_90
 ROTATE_180 = Transpose.ROTATE_180
 ROTATE_270 = Transpose.ROTATE_270
@@ -185,10 +184,17 @@ def elapsedTime(startTime: float) -> str:
     return f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
 
 @typechecked
+def funcName(func: Callable[..., Any]) -> str:
+    module = func.__module__
+    if not module or module in ('builtin', 'builtins', '__builtin__', '__builtins__'):  # pylint: disable=use-set-for-membership
+        return func.__qualname__
+    return f"{module}.{func.__qualname__}"
+
+@typechecked
 async def timeToThread[T](func: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
     startTime = time()
     ret = await to_thread(func, *args, **kwargs)
-    print(f"[steganography] {elapsedTime(startTime)}: {func.__qualname__} {args} {kwargs}")
+    print(f"[steganography] {elapsedTime(startTime)}: {funcName(func)}")
     return ret
 
 @typechecked
@@ -276,20 +282,20 @@ def getImageFormatFromExtension(path: ImagePath) -> str:
     return PNG
 
 @typechecked
-def finalizeImage(image: Image) -> None:
+def finalize(image: Image) -> None:
     """Improves further work with 1-bit B&W with Alpha images."""
-    assert image.mode == BW1
+    assert image.mode == BW1, image.mode
     image.info = {'transparency': 1}
     if not image.format:
         image.format = PNG
 
 @typechecked
-async def prepareImage(image: Image,
-                       *,
-                       resizeFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
-                       resizeWidth: int | None = None,
-                       resizeHeight: int | None = None,
-                       dither: bool | None = None) -> Image | None:
+async def prepare(image: Image,
+                  *,
+                  resizeFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
+                  resizeWidth: int | None = None,
+                  resizeHeight: int | None = None,
+                  dither: bool | None = None) -> Image | None:
     """
     Converts the arbitrary `Image` to 1-bit B&W with Alpha format,
     performing additional modifications during the process.
@@ -317,7 +323,7 @@ async def prepareImage(image: Image,
     if image.mode == BW1 and hasAlpha(image) and processed is grayscale:
         return None  # Indicates that no processing was actually performed and original image could be used as it was
     processed = await timeToThread(processed.convert, BW1, dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)
-    finalizeImage(processed)
+    finalize(processed)
     return processed
 
 @typechecked
@@ -387,17 +393,18 @@ async def encrypt(source: Image,  # noqa: C901
 
         lockArray = np.empty(lockSize, bool)  # These arrays are write-only, so we don't care about the values
         keyArray = np.empty(source.size, bool)   # Also creating empty arrays is faster than filling with 1's or 0's
-        # Also empty arrays produce recognizable pattern in images, and that allows to notice visually
+        # Also empty arrays produce recognizable visual pattern in images, and that allows to notice
         # if some part of the image was not written to, as it should be.
 
     else:
         # 1x1 pixels
 
-        lockArray = np.empty(lockSize, bool)  # ToDo: replace this with the commented code below that fills array with random data that fastens encryption
-        keyArray = np.empty(source.size, bool)  # ToDo: apply gather() wherever possible
-
-        # lockArray = np.frombuffer(token_bytes(fieldWidth * fieldHeight), bool) \
-        #                             .reshape((fieldWidth, fieldHeight))  #, copy = True)  # Copy is needed to make it writable  # ToDo: really? check it
+        lockArea = lockWidth * lockHeight
+        randomBytes = await timeToThread(token_bytes, (lockArea + 7) // 8)
+        randomBytesArray = np.frombuffer(randomBytes, np.uint8)
+        unpackedArray = await timeToThread(np.unpackbits, randomBytesArray)
+        lockArray = unpackedArray[:lockArea].view(bool).reshape(lockSize)
+        keyArray = np.empty(source.size, bool)
 
     sourceArray = np.asarray(source, bool)
 
@@ -462,8 +469,7 @@ async def encrypt(source: Image,  # noqa: C901
             if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
                 await sleep(0)
 
-            r: bool = choice((False, True))
-            lockArray[y + posY, x + posX] = r  # ToDo: replace it with reading lockArray
+            r = lockArray[y + posY, x + posX]  # Already filled with random data
             keyArray[y, x] = r if s else not r
 
     await sleep(0)
@@ -476,8 +482,8 @@ async def encrypt(source: Image,  # noqa: C901
     if (inverseRotateMethod := INVERSE_TRANSPOSE[rotateMethod]) is not None:
         keyImage = await timeToThread(keyImage.transpose, inverseRotateMethod)
     await sleep(0)
-    finalizeImage(lockImage)
-    finalizeImage(keyImage)
+    finalize(lockImage)
+    finalize(keyImage)
     return (lockImage, keyImage, (posX, posY), rotateMethod, flip)  # `rotateMethod` says what to do with the key for decryption; flip after rotate!
 
 @typechecked
@@ -510,8 +516,11 @@ async def overlay(lockImage: Image, keyImage: Image, *, position: tuple[int, int
         keyImage = newKeyImage
 
     assert lockImage.size == keyImage.size, (lockImage.size, keyImage.size)
-    ret = await timeToThread(lambda: imageFromArray(np.minimum(np.asarray(lockImage), np.asarray(keyImage))))
-    finalizeImage(ret)
+    lockArray = await timeToThread(np.asarray, lockImage)
+    keyArray = await timeToThread(np.asarray, keyImage)
+    minArray = await timeToThread(np.minimum, lockArray, keyArray)
+    ret = await timeToThread(imageFromArray, minArray)
+    finalize(ret)
     return ret
 
 @typechecked
@@ -533,7 +542,7 @@ def main(*args: str) -> None:
                 error('Invalid resize argument: ', size)
             options.resize = tuple(tokens)  # pylint: disable=redefined-variable-type
     image = run(loadImage(options.inputImage))
-    processed = run(prepareImage(image, **vars(options))) or image
+    processed = run(prepare(image, **vars(options))) or image
     run(saveImage(processed, 'processed.png'))  # ToDo: Copy pipeline from `main.py` here
     sysExit(0)
 
@@ -547,8 +556,10 @@ else:
         'encrypt',
         'getImageMode',
         'getMimeTypeFromImage',
+        'imageFromJS',
         'imageToBytes',
+        'imageToJS',
         'loadImage',
         'overlay',
-        'prepareImage',
+        'prepare',
     )

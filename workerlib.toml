@@ -13,7 +13,7 @@ sync_main_only = true
 "Steganography" = [
     "encrypt",
     "overlay",
-    "prepareImage",
+    "prepare",
 ]
 
 [adapters]
