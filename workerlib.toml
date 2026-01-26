@@ -18,6 +18,6 @@ sync_main_only = true
 
 [adapters]
 "Steganography" = [
-    ["Image", "imageToBytes", "loadImage"],
+    ["Image", "imageToJS", "imageFromJS"],
     ["Transpose", "None", "None"],
 ]

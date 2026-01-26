@@ -15,7 +15,7 @@ from time import time
 from typing import cast, Any, ClassVar, Final, IO, Literal
 
 try:
-    from PIL.Image import fromarray as imageFromArray, new as imageNew, open as imageOpen
+    from PIL.Image import fromarray as imageFromArray, frombuffer as imageFromBuffer, new as imageNew, open as imageOpen
     from PIL.Image import Dither, Image, Resampling, Transpose
     from PIL.ImageMode import getmode as imageGetMode
     from PIL.ImageOps import pad as imagePad, scale as imageScale
@@ -211,7 +211,7 @@ async def saveImage(image: Image, path: ImagePath) -> None:
         'optimize': True,  # Smallest size but longest compression time
         'transparency': 1,  # Index of the color to make transparent, 1 is usually white
     } if image.mode == BW1 else {
-        'compress_level': 1,  # Best speed but minimum compression
+        'optimize': True,
     }
     await timeToThread(image.save, path, getImageFormatFromExtension(path), **kwargs)
 
@@ -224,6 +224,14 @@ async def imageToBytes(image: Image) -> Buffer:
     stream = BytesIO()
     await saveImage(image, stream)
     return stream.getbuffer()
+
+@typechecked
+def imageToJS(image: Image) -> Sequence[Any]:  # ToDo: Rewrite using dict() for better transport readability
+    return (image.mode, image.size, image.tobytes(), 'raw', image.mode, 0, 1)
+
+@typechecked
+def imageFromJS(serialized: Sequence[Any]) -> Image:
+    return imageFromBuffer(*serialized)
 
 @typechecked
 def hasAlpha(image: Image) -> bool:

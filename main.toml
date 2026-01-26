@@ -22,6 +22,6 @@ packages = [
 
 [adapters]
 "Steganography" = [
-    ["Image", "imageToBytes", "loadImage"],
+    ["Image", "imageToJS", "imageFromJS"],
     ["Transpose", "None", "None"],
 ]

@@ -539,13 +539,12 @@ class ImageBlock:
                       processFunction: Callable[..., Image |
                                                      tuple[Image, Image, tuple[int, int], Transpose | None, bool]] |
                                        Callable[..., Awaitable[Image |
-                                                               tuple[Image, Image, tuple[int, int], Transpose | None, bool]]],
+                                                               tuple[Image, Image, tuple[int, int], Transpose | None, bool]]],  # ToDo: Create type for this
                       sourceStages: Stage | Iterable[Stage],
                       *,
                       optionalSourceStages: Stage | Iterable[Stage] | None = None,
                       affectedStages: Stage | Iterable[Stage] | None = None,
                       options: Iterable[str] | Mapping[str, Any] = ()) -> tuple[tuple[int, int], Transpose | None, bool] | None:
-        startTime = time()
         sources = tuple(cls.imageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.imageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         optionalSources = tuple(cls.imageBlocks[stage] for stage in ((optionalSourceStages,) if isinstance(optionalSourceStages, Stage) else optionalSourceStages or ()))
@@ -558,7 +557,6 @@ class ImageBlock:
             await repaint()
         if not all(source.image for source in sources):
             return None
-        log(f"Processing {', '.join(source.stage.name for source in chain(sources, optionalSources))} => {', '.join(target.stage.name for target in targets)}")
         for t in targets:
             t.startOperation(_("Processing image"))
         await repaint()
@@ -566,10 +564,13 @@ class ImageBlock:
             sourceImages = tuple(source.image for source in chain(sources, optionalSources))
             assert cls.options
             options = cls.options.fillOptions(options)
+            log(f"Processing {', '.join(source.stage.name for source in chain(sources, optionalSources))} => {', '.join(target.stage.name for target in targets)}")
+            startTime = time()
             if iscoroutinefunction(processFunction) or isinstance(processFunction, JsProxy):  # pylint: disable=consider-ternary-expression
                 ret = await processFunction(*sourceImages, **options)
             else:
                 ret = await to_thread(processFunction, *sourceImages, **options)
+            log(f"Completed processing in {elapsedTime(startTime)}")
             if ret is None:  # No changes were made, use original image
                 assert len(sourceImages) == 1 and sourceImages[0], sourceImages  # noqa: PT018
                 ret = sourceImages
@@ -583,7 +584,6 @@ class ImageBlock:
                 target.completeOperation(image, await imageToBytes(image))
             await repaint()
             ret = ret[len(targets):] if len(ret) > len(targets) else None
-            log(f"Completed process() in {elapsedTime(startTime)}")
         except Exception as ex:  # noqa : BLE001
             for target in targets:
                 target.error(_("processing image"), ex)

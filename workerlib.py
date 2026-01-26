@@ -58,7 +58,7 @@
 from collections.abc import Coroutine, Buffer, Callable, Iterable, Iterator, Mapping, Sequence
 from functools import wraps
 from importlib import import_module
-from inspect import isfunction, iscoroutinefunction, signature
+from inspect import isclass, isfunction, iscoroutinefunction, signature
 from itertools import chain
 from re import findall
 from sys import platform, version as _pythonVersion, _getframe
@@ -92,7 +92,6 @@ except ImportError:
         _pthreads = False
 
 from pyscript import config, RUNNING_IN_WORKER
-from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
 from pyscript.web import page  # pylint: disable=import-error, no-name-in-module
 
 try:  # Try to identify PyScript version
@@ -122,6 +121,7 @@ type _Coroutine[T] = Coroutine[None, None, T]
 type _CoroutineFunction[T] = Callable[..., _Coroutine[T]]
 type _FunctionOrCoroutine[T] = Callable[..., T | _Coroutine[T]]
 type _Adapter[T] = tuple[type[T], Callable[[T], Any | _Coroutine[Any]] | None, Callable[[Any], T | _Coroutine[T]] | None]
+type _Timed[T] = tuple[str, tuple[float, T]]
 _TransportSafe: TypeAlias = int | float | bool | str | Buffer | Iterable | Sequence | Mapping | None  # type: ignore[type-arg]  # Using `type` or adding `[Any]` breaks `isinstance()`  # noqa: UP040
 
 try:  # To turn runtime typechecking on, add "beartype" to `packages` array in your `workerlib.toml`
@@ -139,13 +139,24 @@ _CONNECT_REQUEST: Final[str] = '__REQUEST__'
 _CONNECT_RESPONSE: Final[str] = '__RESPONSE__'
 
 _ADAPTER_PREFIX: Final[str] = '_workerlib_'
+_START_TIME: Final[str] = _ADAPTER_PREFIX + 'startTime'
 
 __EXPORT__: Final[str] = '__export__'
 
 _ADAPTERS_SECTION: Final[str] = 'adapters'
 _EXPORTS_SECTION: Final[str] = 'exports'
 
-__all__: Sequence[str] = ('Worker', '__export__', '__info__', 'connectToWorker', 'export', 'typechecked')  # Will be reduced below
+__all__: Sequence[str] = (  # Will be reduced below
+    'Worker',
+    '__export__',
+    '__info__',
+    '__short_info__',
+    '_elapsedTime',
+    'connectToWorker',
+    'export',
+    'typechecked',
+)
+
 __export__: Sequence[str]
 __adapters__: Sequence[_Adapter[Any]] = ()
 
@@ -156,6 +167,11 @@ def _log(*args: Any) -> None:
 @typechecked
 def _error(message: str) -> NoReturn:
     raise RuntimeError(f"{_PREFIX} {message}")
+
+@typechecked
+def _elapsedTime(startTime: float) -> str:
+    dt = time() - startTime
+    return f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
 
 @typechecked
 def _importModule(moduleName: str) -> ModuleType:
@@ -170,15 +186,19 @@ def _importFromModule(module: str | ModuleType, qualNames: str | Iterable[str]) 
         module = _importModule(module)
     if isinstance(qualNames, str):
         qualNames = (qualNames,)
-    _log(f"Importing from module {module.__name__}: {', '.join(name for name in qualNames if name != 'None')}")
+    builtins = cast(dict[str, Any], __builtins__)
+    if not isinstance(builtins, dict):
+        builtins = builtins.__dict__  # type: ignore[unreachable]
+    _log(f"Importing from module {module.__name__}: {', '.join(name for name in qualNames if name not in builtins)}")
     for qualName in qualNames:
-        if qualName == 'None':
-            yield None
+        try:
+            yield builtins[qualName]
             continue
-        obj = module
-        for name in qualName.split('.'):
-            obj = getattr(obj, name)
-        yield obj
+        except KeyError:
+            obj = module
+            for name in qualName.split('.'):
+                obj = getattr(obj, name)
+            yield obj
 
 @typechecked
 def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str]], allowSubSequences: bool = True) -> Iterator[_Adapter[Any]]:
@@ -192,8 +212,8 @@ def _adaptersFromSequence(module: ModuleType, names: Sequence[str | Sequence[str
         (cls, encoder, decoder) = _importFromModule(module, cast(Sequence[str], names))
         if not isinstance(cls, type):
             _error(f"Bad adapter class {names[0]} for module {module.__name__}, must be type, got {type(cls)}")
-        if encoder is not None and not isfunction(encoder) and not iscoroutinefunction(encoder):
-            _error(f'Bad adapter encoder {names[1]} for module {module.__name__}, must be function or coroutine or "None", got {type(encoder)}')
+        if encoder is not None and not isfunction(encoder) and not iscoroutinefunction(encoder) and not isclass(encoder):
+            _error(f'Bad adapter encoder {names[1]} for module {module.__name__}, must be function or coroutine or class or "None", got {type(encoder)}')
         if decoder is not None and not isfunction(decoder) and not iscoroutinefunction(decoder):
             _error(f'Bad adapter encoder {names[2]} for module {module.__name__}, must be function or coroutine or "None", got {type(decoder)}')
         _log(f"Adapter created: {decoder} => {cls} => {encoder}")
@@ -222,36 +242,40 @@ async def _to_js(obj: Any) -> Any:
                 value = await encoder(obj) if iscoroutinefunction(encoder) else encoder(obj)
             else:
                 value = obj  # Trying to pass object as is, hoping it would work, like for Enums
-            return to_js((_ADAPTER_PREFIX + cls.__name__, value))  # Encoded class name is NOT the name of type of object being encoded, but the name of the adapter to use to decode the object on the other side
+            return (_ADAPTER_PREFIX + cls.__name__, value)  # Encoded class name is NOT the name of type of object being encoded, but the name of the adapter to use to decode the object on the other side
     if not isinstance(obj, _TransportSafe):
         _error(f"No adapter found for class {type(obj)}, and transport layer (JavaScript structured clone) would not accept it as is, see https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm")
     if isinstance(obj, str | Buffer):
-        return to_js(obj)
+        return obj
     if isinstance(obj, Mapping):
-        return to_js({await _to_js(k): await _to_js(v) for (k, v) in obj.items()})
+        return {await _to_js(k): await _to_js(v) for (k, v) in obj.items()}
     if isinstance(obj, Iterable):
-        return to_js(tuple([await _to_js(v) for v in obj]))  # pylint: disable=consider-using-generator
-    return to_js(obj)
+        return tuple([await _to_js(v) for v in obj])  # pylint: disable=consider-using-generator
+    return obj
 
 @typechecked
 async def _to_py(obj: Any) -> Any:
     if hasattr(obj, 'to_py'):
         return await _to_py(obj.to_py())
+    if isinstance(obj, str | Buffer):
+        return obj
     if isinstance(obj, Mapping):
-        obj = {await _to_py(k): await _to_py(v) for (k, v) in obj.items()}
-    elif not isinstance(obj, str | Buffer) and isinstance(obj, Iterable):
+        return {await _to_py(k): await _to_py(v) for (k, v) in obj.items()}
+    if isinstance(obj, Iterable):
         obj = tuple([await _to_py(v) for v in obj])  # pylint: disable=consider-using-generator
     if not isinstance(obj, tuple) or len(obj) != 2:
         return obj
     (name, value) = obj
     if not isinstance(name, str):
         return obj
+    if name == _START_TIME:
+        return obj
     tokens = name.split(_ADAPTER_PREFIX)
     if len(tokens) != 2 or tokens[0]:
         return obj
     className = tokens[1]
     for (cls, _encoder, decoder) in __adapters__:
-        if className == cls.__name__:
+        if cls.__name__ == className:
             if decoder is None:
                 return cls(value)  # e.g. Enum
             return await decoder(value) if iscoroutinefunction(decoder) else decoder(value)
@@ -294,7 +318,7 @@ def _info() -> Sequence[str]:
     return tuple(ret)
 
 __info__ = _info()
-
+__short_info__ = f'PyScript {_pyscriptVersion} / Pyodide {_pyodideVersion} / Python {_pythonVersion}'
 
                        ##
 if RUNNING_IN_WORKER:  ##
@@ -313,12 +337,14 @@ if RUNNING_IN_WORKER:  ##
         @typechecked
         async def workerSerializedWrapper(*args: Any, **kwargs: Any) -> Any:
             @typechecked
-            def hasKwargs(func: _FunctionOrCoroutine[T], *args: Any) -> bool:
+            def hasKwargs(func: _FunctionOrCoroutine[T], args: Any) -> bool:  # ToDo: Remove it as it's always true?
                 if not args:
                     return False
                 lastArg = args[-1]
                 if not isinstance(lastArg, dict):
                     return False
+                if _START_TIME in lastArg:
+                    return True
                 if any(not isinstance(key, str) for key in lastArg):
                     return False
                 funcParams = signature(func).parameters
@@ -329,7 +355,7 @@ if RUNNING_IN_WORKER:  ##
 
             assert not kwargs  # `kwargs` get passed to workers as the last of `args`, of type `dict`
             args = await _to_py(args)
-            if hasKwargs(func, *args):
+            if hasKwargs(func, args):
                 (args, kwargs) = (args[:-1], args[-1])  # If `func` accepts keyword arguments, extract them from the last of `args`
             ret = await func(*args, **kwargs) if iscoroutinefunction(func) else func(*args, **kwargs)
             return await _to_js(ret)
@@ -438,13 +464,12 @@ else:  ##  MAIN THREAD
         @typechecked
         async def mainSerializedWrapper(*args: Any, **kwargs: Any) -> T:
             assert isinstance(func, JsProxy), type(func)
-            startTime = time()
-            jArgs = await _to_js(args)  # pylint: disable=consider-using-generator
-            jKwArgs = await _to_js(kwargs)
-            jKwArgs[_START_TIME] = startTime
-            ret = await cast(_CoroutineFunction[T], func)(*jArgs, **jKwArgs)
+            kwargs[_START_TIME] = time()
+            args = await _to_js(args)
+            kwargs = await _to_js(kwargs)
+            ret = await cast(_CoroutineFunction[T], func)(*args, kwargs)  # Passing `kwargs` as positional arguments because `**kwargs` don't get serialized properly
             ret = await _to_py(ret)
-            if isinstance(ret, tuple) and ret and ret[0] == _START_TIME:
+            if isinstance(ret, tuple) and ret and ret[0] == _START_TIME:  # ToDo: Rewrite it to dict
                 (startTime, ret) = ret[1]
                 _log(f"Passing return value {_elapsedTime(startTime)}")
             return ret
