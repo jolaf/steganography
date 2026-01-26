@@ -389,26 +389,29 @@ async def encrypt(source: Image,  # noqa: C901
     if lockMask or keyMask or smooth:
         # 2x2 pixels
 
-        (lockWidth, lockHeight) = lockSize = (lockWidth * 2, lockHeight * 2)
+        N = 2
+        (lockWidth, lockHeight) = lockSize = (lockWidth * N, lockHeight * N)
+        (keyWidth, keyHeight) = keySize = (source.width * N, source.height * N)
 
-        lockArray = np.empty(lockSize, bool)  # These arrays are write-only, so we don't care about the values
-        keyArray = np.empty(source.size, bool)   # Also creating empty arrays is faster than filling with 1's or 0's
+        # PIL/NumPy array indexes are `y` first, `x` second
+        lockArray = np.empty((lockHeight, lockWidth), bool)  # These arrays are write-only, so we don't care about the initial values.
+        keyArray = np.empty((keyHeight, keyWidth), bool)   # Also creating empty arrays is faster than filling with 1's or 0's.
         # Also empty arrays produce recognizable visual pattern in images, and that allows to notice
         # if some part of the image was not written to, as it should be.
 
     else:
         # 1x1 pixels
 
+        N = 1
         lockArea = lockWidth * lockHeight
         randomBytes = await timeToThread(token_bytes, (lockArea + 7) // 8)
         randomBytesArray = np.frombuffer(randomBytes, np.uint8)
         unpackedArray = await timeToThread(np.unpackbits, randomBytesArray)
-        lockArray = unpackedArray[:lockArea].view(bool).reshape(lockSize)
-        keyArray = np.empty(source.size, bool)
+        lockArray = unpackedArray[:lockArea].view(bool).reshape((lockHeight, lockWidth))
+        keyArray = np.empty((source.height, source.width), bool)
 
     sourceArray = np.asarray(source, bool)
 
-    # PIL/NumPy array indexes are `y` first, `x` second
     # Color False/0 is black, and True/1 is white/transparent
     if lockMask or keyMask:
         # 2x2 pixels with masks
@@ -436,7 +439,7 @@ async def encrypt(source: Image,  # noqa: C901
         lockMaskArray = np.asarray(lockMask, bool)
         keyMaskArray = np.asarray(keyMask, bool)
 
-        for ((y, x), s) in np.ndenumerate(np.asarray(source, bool)):
+        for ((y, x), s) in np.ndenumerate(sourceArray):
             if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
                 await sleep(0)
 
@@ -444,10 +447,10 @@ async def encrypt(source: Image,  # noqa: C901
             keyMaskValue = keyMaskArray[y, x].item()
             sourceValue = s.item()
             (a1, a2) = BitBlock.getRandomPair(3 - lockMaskValue, 3 - keyMaskValue, 4 - sourceValue)
-            (lockX, lockY) = ((x + posX) * 2, (y + posY) * 2)
-            (keyX, keyY) = (x * 2, y * 2)
-            lockArray[lockY : lockY + 2, lockX : lockX + 2] = a1
-            keyArray[keyY : keyY + 2, keyX : keyX + 2] = a2
+            (lockX, lockY) = ((x + posX) * N, (y + posY) * N)
+            (keyX, keyY) = (x * N, y * N)
+            lockArray[lockY : lockY + N, lockX : lockX + N] = a1
+            keyArray[keyY : keyY + N, keyX : keyX + N] = a2
 
     elif smooth:
         # 2x2 pixels without masks
@@ -457,10 +460,14 @@ async def encrypt(source: Image,  # noqa: C901
                 await sleep(0)
 
             (a1, a2) = BitBlock.getRandomPair(2, 2, 4)
-            (lockX, lockY) = ((x + posX) * 2, (y + posY) * 2)
-            (keyX, keyY) = (x * 2, y * 2)
-            lockArray[lockY : lockY + 2, lockX : lockX + 2] = a1
-            keyArray[keyY : keyY + 2, keyX : keyX + 2] = a1 if s else a2
+            (lockX, lockY) = ((x + posX) * N, (y + posY) * N)
+            (keyX, keyY) = (x * N, y * N)
+            try:
+                lockArray[lockY : lockY + N, lockX : lockX + N] = a1
+                keyArray[keyY : keyY + N, keyX : keyX + N] = a1 if s else a2
+            except ValueError:
+                print('#',x, y, s, a1, a2, lockX, lockY, keyX, keyY)
+                raise
 
     else:
         # 1x1 pixels
@@ -484,7 +491,7 @@ async def encrypt(source: Image,  # noqa: C901
     await sleep(0)
     finalize(lockImage)
     finalize(keyImage)
-    return (lockImage, keyImage, (posX, posY), rotateMethod, flip)  # `rotateMethod` says what to do with the key for decryption; flip after rotate!
+    return (lockImage, keyImage, (posX * N, posY * N), rotateMethod, flip)  # `rotateMethod` says what to do with the key for decryption; flip after rotate!
 
 @typechecked
 async def overlay(lockImage: Image, keyImage: Image, *, position: tuple[int, int] = (0, 0), rotate: Transpose | None = None, flip: bool | None = None) -> Image:
