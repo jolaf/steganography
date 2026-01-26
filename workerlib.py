@@ -61,13 +61,16 @@ from importlib import import_module
 from inspect import isclass, isfunction, iscoroutinefunction, signature
 from itertools import chain
 from re import search
-from sys import platform, version as _pythonVersion, _getframe
+from sys import flags, platform, version as _pythonVersion, _getframe
 from time import time
 from types import ModuleType
 from typing import cast, Any, Final, NoReturn, TypeAlias
+from warnings import simplefilter
 
 from pyscript import config, RUNNING_IN_WORKER
 from pyscript.web import page  # pylint: disable=import-error, no-name-in-module
+
+simplefilter('default')
 
 # We name everything starting with `_` underscore to minimize the chance of a conflict with exported user functions
 type _Coroutine[T] = Coroutine[None, None, T]
@@ -302,6 +305,14 @@ def _info() -> Sequence[str]:
         ret.append(f"CPUs: {_cpus}  pthreads: {_pthreads}")
 
     ret.append(f"Python {_pythonVersion}")
+    ret.append(f"DevMode {flags.dev_mode}  Optimized {flags.optimize or False}")
+    assert __debug__ == (flags.optimize < 1)
+
+    try:
+        assert str()  # noqa: UP018
+        ret.append("Assertions are DISABLED")
+    except AssertionError:
+        ret.append("Assertions are enabled")
 
     if _beartypeVersion:
         try:
@@ -314,12 +325,6 @@ def _info() -> Sequence[str]:
             ret.append(f"Beartype {_beartypeVersion} is up and watching, remove it from PyScript configuration to make things faster")
     else:
         ret.append("Runtime type checking is off")
-
-    try:
-        assert str()  # noqa: UP018
-        ret.append("Assertions are DISABLED")
-    except AssertionError:
-        ret.append("Assertions are enabled")
 
     return tuple(ret)
 
