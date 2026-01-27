@@ -68,7 +68,6 @@ from typing import cast, Any, Final, NoReturn, TypeAlias
 from warnings import simplefilter
 
 from pyscript import config, RUNNING_IN_WORKER  # Yes, this module is PyScript-only and won't work out of the browser
-from pyscript.web import page  # pylint: disable=import-error, no-name-in-module
 
 simplefilter('default')
 
@@ -108,6 +107,14 @@ except ImportError:
         _pthreads = sysconf('SC_THREADS') > 0
     except (ImportError, ValueError, AttributeError):
         _pthreads = False
+
+try:
+    from pyscript.web import page  # pylint: disable=import-error, no-name-in-module
+except AttributeError as ex:
+    if RUNNING_IN_WORKER:
+        page = None
+    else:  # This shouldn't happen
+        raise
 
 try:  # Getting PyScript version
     from pyscript import version as _pyscriptVersion  # type: ignore[attr-defined]
