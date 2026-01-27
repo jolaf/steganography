@@ -37,7 +37,7 @@
   </script -->
 </head>
 <body>
-<script type="py" src="./main.py" config="./main.toml" target="#log"></script>
+<script type="py" src="./main.py" config="./main.toml" target="log"></script>
 <script type="py" worker name="workerlib" src="./workerlib.py" config="./workerlib.toml"></script>
 <mpy-config>plugins = ["!codemirror", "!deprecations-manager", "!donkey", "!py-editor", "!py-game", "!py-terminal"]</mpy-config><!-- Workaround https://github.com/pyscript/pyscript/issues/2430#issuecomment-3785280652 -->
 <div id="flexColumn100">
@@ -137,7 +137,14 @@
   <div id="footer">
     <table><tr>
       <td>© <a href="https://vk.com/jolaf">Vasily Zakharov</a>, Victor Kurush 2026</td>
-      <td id="build">Build dev</td>
+      <td>Build <a id="build" href="https://github.com/jolaf/steganography">dev</a>
+              / <a href="https://pyscript.net">PyScript</a> <span id="pyscript-version"></span>
+              / <a href="https://pyodide.org">Pyodide</a> <span id="pyodide-version"></span>
+              / <a href="https://www.python.org">Python</a> <span id="python-version"></span>
+              / <a href="https://emscripten.org">Emscripten</a> <span id="emscripten-version"></span>
+              / <a href="https://llvm.org">LLVM</a>
+              / <a href="https://webassembly.org">WebAssembly</a>
+      </td>
     </tr></table>
   </div>
 </div>

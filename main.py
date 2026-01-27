@@ -52,7 +52,7 @@ type Blob = JsProxy  # type: ignore[no-redef]  # ToDo: File a bug about this
 type Event = JsProxy  # type: ignore[no-redef]
 type Node = JsProxy  # type: ignore[no-redef]
 
-from workerlib import connectToWorker, typechecked, _elapsedTime as elapsedTime, __info__, __short_info__, Worker
+from workerlib import connectToWorker, typechecked, _elapsedTime as elapsedTime, __info__, __versions__, Worker
 
 from numpy import __version__ as numpyVersion
 from PIL import __version__ as pilVersion
@@ -873,11 +873,17 @@ def loopExceptionHandler(_loop: AbstractEventLoop,
 @typechecked
 async def main() -> None:
     log("Starting app")
+
     sys.excepthook = mainExceptionHandler
     get_running_loop().set_exception_handler(loopExceptionHandler)
+
     for info in __info__:
         log(info)
-    page['build'].innerHTML += " / " + __short_info__
+
+    for (product, version) in __versions__.items():
+        if element := page[product.lower() + '-version']:
+            element.textContent = version
+
     log("Pillow", pilVersion)
     log("NumPy", numpyVersion)
 

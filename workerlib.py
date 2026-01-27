@@ -67,7 +67,7 @@ from types import ModuleType
 from typing import cast, Any, Final, NoReturn, TypeAlias
 from warnings import simplefilter
 
-from pyscript import config, RUNNING_IN_WORKER
+from pyscript import config, RUNNING_IN_WORKER  # Yes, this module is PyScript-only and won't work out of the browser
 from pyscript.web import page  # pylint: disable=import-error, no-name-in-module
 
 simplefilter('default')
@@ -158,7 +158,7 @@ __all__: Sequence[str] = (  # Will be reduced below
     'Worker',
     '__export__',
     '__info__',
-    '__short_info__',
+    '__versions__',
     '_elapsedTime',
     'connectToWorker',
     'export',
@@ -329,7 +329,13 @@ def _info() -> Sequence[str]:
     return tuple(ret)
 
 __info__ = _info()
-__short_info__ = f'PyScript {_pyscriptVersion} / Pyodide {_pyodideVersion} / Python {_pythonVersion.split()[0]}'
+
+__versions__ = {
+    'PyScript': _pyscriptVersion,
+    'Pyodide': _pyodideVersion,
+    'Python': _pythonVersion.split()[0],
+    'Emscripten': _emscriptenVersion,
+}
 
                        ##
 if RUNNING_IN_WORKER:  ##
@@ -454,7 +460,7 @@ if RUNNING_IN_WORKER:  ##
     else:
         # If user is importing this module in a worker, they MUST call `export()` explicitly
         del _exportFrom
-        __all__ = ('__info__', '__short_info__', '_elapsedTime', 'export', 'typechecked')
+        __all__ = ('__info__', '__versions__', '_elapsedTime', 'export', 'typechecked')
 
        ##
 else:  ##  MAIN THREAD
@@ -524,4 +530,4 @@ else:  ##  MAIN THREAD
         return ret
 
     assert not hasattr(globals(), __EXPORT__), getattr(globals(), __EXPORT__)
-    __all__ = ('Worker', '__info__', '__short_info__', '_elapsedTime', 'connectToWorker', 'typechecked')
+    __all__ = ('Worker', '__info__', '__versions__', '_elapsedTime', 'connectToWorker', 'typechecked')

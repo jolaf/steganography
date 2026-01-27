@@ -1,10 +1,9 @@
-Provide proper instructions if loading fails: github pages, python web server, npm web server, turn off CORS
+Provide proper instructions if loading fails: github pages, python web server, npm web server
 Regenerate at options change
 Disable smooth if lock or key are loaded
 Add "Download All" button
 Test with offline PyScript
 Create build.py, freeze dependency versions!
 <link rel="alternate" hreflang="ru" href="/ru/"> https://github.com/untra/polyglot
-Ask for assertions in PyScript
 File a bug against PyScript about UI freezing when large image is resized in a worker
 When replacing any image, kill everything below the chain (still not working!)
