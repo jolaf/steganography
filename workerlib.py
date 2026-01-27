@@ -77,7 +77,7 @@ type _Coroutine[T] = Coroutine[None, None, T]
 type _CoroutineFunction[T] = Callable[..., _Coroutine[T]]
 type _FunctionOrCoroutine[T] = Callable[..., T | _Coroutine[T]]
 type _Adapter[T] = tuple[type[T], Callable[[T], Any | _Coroutine[Any]] | None, Callable[[Any], T | _Coroutine[T]] | None]
-type _Timed[T] = tuple[str, tuple[float, T]]
+type _Timed[T] = tuple[str, tuple[float | int, T]]
 _TransportSafe: TypeAlias = int | float | bool | str | Buffer | Iterable | Sequence | Mapping | None  # type: ignore[type-arg]  # Using `type` or adding `[Any]` breaks `isinstance()`  # noqa: UP040
 
 try:  # Getting CPU count
@@ -177,7 +177,7 @@ def _error(message: str) -> NoReturn:
     raise RuntimeError(f"{_PREFIX} {message}")
 
 @typechecked
-def _elapsedTime(startTime: float) -> str:
+def _elapsedTime(startTime: float | int) -> str:  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
     dt = time() - startTime
     return f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
 
@@ -329,7 +329,7 @@ def _info() -> Sequence[str]:
     return tuple(ret)
 
 __info__ = _info()
-__short_info__ = f'PyScript {_pyscriptVersion} / Pyodide {_pyodideVersion} / Python {_pythonVersion}'
+__short_info__ = f'PyScript {_pyscriptVersion} / Pyodide {_pyodideVersion} / Python {_pythonVersion.split()[0]}'
 
                        ##
 if RUNNING_IN_WORKER:  ##

@@ -52,7 +52,7 @@ type Blob = JsProxy  # type: ignore[no-redef]  # ToDo: File a bug about this
 type Event = JsProxy  # type: ignore[no-redef]
 type Node = JsProxy  # type: ignore[no-redef]
 
-from workerlib import connectToWorker, typechecked, _elapsedTime as elapsedTime, __info__, Worker
+from workerlib import connectToWorker, typechecked, _elapsedTime as elapsedTime, __info__, __short_info__, Worker
 
 from numpy import __version__ as numpyVersion
 from PIL import __version__ as pilVersion
@@ -449,7 +449,7 @@ class Options(Storage):
             defaultValue = super().__getattribute__(name)
             if isinstance(defaultValue, TagAttrValue):
                 if isinstance(defaultValue, float):
-                    assert isinstance(value, int | float), f"Incorrect type for option {name}: {type(value).__name__}, expected int or float"
+                    assert isinstance(value, float | int), f"Incorrect type for option {name}: {type(value).__name__}, expected int or float"
                 else:
                     assert isinstance(value, type(defaultValue)), f"Incorrect type for option {name}: {type(value).__name__}, expected {type(defaultValue).__name__}"
                 self[name] = value
@@ -877,6 +877,7 @@ async def main() -> None:
     get_running_loop().set_exception_handler(loopExceptionHandler)
     for info in __info__:
         log(info)
+    page['build'].innerHTML += " / " + __short_info__
     log("Pillow", pilVersion)
     log("NumPy", numpyVersion)
 

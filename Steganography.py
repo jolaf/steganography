@@ -179,7 +179,7 @@ def error(*args: Any) -> None:
     sysExit(1)
 
 @typechecked
-def elapsedTime(startTime: float) -> str:
+def elapsedTime(startTime: float | int) -> str:  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
     dt = time() - startTime
     return f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
 
@@ -301,7 +301,7 @@ async def prepare(image: Image,
     performing additional modifications during the process.
     """
     if resizeFactor is not None and (not isinstance(resizeFactor, float | int) or resizeFactor <= 0):
-        raise ValueError(f"Bad resizeFactor {resizeFactor}, must be a positive float or int")
+        raise ValueError(f"Bad resizeFactor {resizeFactor}, must be a positive int or float")
     if resizeWidth is not None and (not isinstance(resizeWidth, int) or resizeWidth <= 0):
         raise ValueError(f"Bad resizeWidth {resizeWidth}, must be a positive int")
     if resizeHeight is not None and (not isinstance(resizeHeight, int) or resizeHeight <= 0):
@@ -343,10 +343,10 @@ async def encrypt(source: Image,  # noqa: C901
     they are used as visible hints on the corresponding output images.
     """
     if lockFactor is not None and (not isinstance(lockFactor, float | int) or lockFactor < 1):
-        raise ValueError(f"Bad lockFactor {lockFactor}, must be a positive float no less than 1")
-    if lockWidth is not None and (not isinstance(lockWidth, int) or lockWidth <= source.width):
+        raise ValueError(f"Bad lockFactor {lockFactor}, must be an int or a float no less than 1")
+    if lockWidth is not None and (not isinstance(lockWidth, int) or lockWidth < source.width):
         raise ValueError(f"Bad lockWidth {lockWidth}, must be a positive int at least equal to source.width ({source.width})")
-    if lockHeight is not None and (not isinstance(lockHeight, int) or lockHeight <= source.height):
+    if lockHeight is not None and (not isinstance(lockHeight, int) or lockHeight < source.height):
         raise ValueError(f"Bad lockHeight {lockHeight}, must be a positive int at least equal to source.height ({source.height})")
     if lockFactor and (lockWidth or lockHeight):
         raise ValueError("Either lockFactor or lockWidth/lockHeight can be specified")
@@ -366,25 +366,45 @@ async def encrypt(source: Image,  # noqa: C901
     elif lockWidth or lockHeight:
         if not lockHeight:
             assert lockWidth
+            lockWidth = max(lockWidth, source.width)
             if source.width == source.height:  # noqa: SIM108
                 lockSize = (lockWidth, lockWidth)
             else:
                 lockSize = (lockWidth, round(source.height * lockWidth / source.width))
         elif not lockWidth:
             assert lockHeight
+            lockHeight = max(lockHeight, source.height)
             if source.width == source.height:  # noqa: SIM108
                 lockSize = (lockHeight, lockHeight)
             else:
                 lockSize = (round(source.width * lockHeight / source.height), lockHeight)
         else:
-            lockSize = (lockWidth, lockHeight)
+            lockSize = (max(lockWidth, source.width), max(lockHeight, source.height))
     else:
         lockSize = source.size
     (lockWidth, lockHeight) = lockSize
 
-    # (posX, posY) is (random) position of the key relative to the lock
-    posX = choice(range(lockWidth - source.width + 1))  # 0 if equal  # ToDo: instead of fully random position, make it along the border
-    posY = choice(range(lockHeight - source.height + 1))  # 0 if equal
+    dw = lockWidth - source.width
+    dh = lockHeight - source.height
+
+    # (posX, posY) is (random) position of the key relative to the lock, keeping to the sides
+    if dw == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
+        (posX, posY) = (0, choice(range(dh + 1)))  # 0 if equal
+    elif dh == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
+        (posX, posY) = (choice(range(dw + 1)), 0)
+    else:  # Both sides are not equal
+        dTotal = 2 * (dw + dh)
+        assert dTotal >= 4, dTotal  # Would be 0 if both sides are equal, and `range(0)` would break
+        pos = choice(range(dTotal))
+
+        if pos < dw:
+            (posX, posY) = (pos, 0)
+        elif pos < dw + dh:
+            (posX, posY) = (dw, pos - dw)
+        elif pos < 2 * dw + dh:
+            (posX, posY) = (2 * dw + dh - pos, dh)
+        else:  # pos < 2 * (dw + dh)
+            (posX, posY) = (0, 2 * (dw + dh) - pos)
 
     if lockMask or keyMask or smooth:
         # 2x2 pixels
@@ -411,6 +431,7 @@ async def encrypt(source: Image,  # noqa: C901
         keyArray = np.empty((source.height, source.width), bool)
 
     sourceArray = np.asarray(source, bool)
+    startTime = time()
 
     # Color False/0 is black, and True/1 is white/transparent
     if lockMask or keyMask:
@@ -441,6 +462,9 @@ async def encrypt(source: Image,  # noqa: C901
 
         for ((y, x), s) in np.ndenumerate(sourceArray):
             if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
+                if time() - startTime > 10:
+                    print('Y:', y)
+                    startTime = time()
                 await sleep(0)
 
             lockMaskValue = lockMaskArray[y + posY, x + posX].item()
@@ -458,6 +482,9 @@ async def encrypt(source: Image,  # noqa: C901
         for lockY in range(0, lockHeight, N):
             for lockX in range(0, lockWidth, N):
                 if lockX == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
+                    if time() - startTime > 10:
+                        print('Y:', lockY // N)  # ToDo: Replace with percent
+                        startTime = time()
                     await sleep(0)
 
                 (a1, a2) = BitBlock.getRandomPair(2, 2, 4)
@@ -477,6 +504,9 @@ async def encrypt(source: Image,  # noqa: C901
 
         for ((y, x), s) in np.ndenumerate(sourceArray):
             if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
+                if time() - startTime > 10:
+                    print('Y:', y)
+                    startTime = time()
                 await sleep(0)
 
             r = lockArray[y + posY, x + posX]  # Already filled with random data
@@ -513,7 +543,7 @@ async def overlay(lockImage: Image, keyImage: Image, *, position: tuple[int, int
     assert posY >= 0, position
 
     if rotate is not None:
-        keyImage = await timeToThread(keyImage.transpose, rotate)  # ToDo: Check if timeToThread() is really helping, on a large image
+        keyImage = await timeToThread(keyImage.transpose, rotate)
     if flip:
         keyImage = await timeToThread(keyImage.transpose, FLIP)
 
