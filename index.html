@@ -38,7 +38,7 @@
 </head>
 <body>
 <script type="py" src="./main.py" config="./main.toml" target="log"></script>
-<script type="py" worker name="workerlib" src="./workerlib.py" config="./workerlib.toml"></script>
+<script type="py" worker name="workerlib" src="./workerlib/workerlib.py" config="./workerlib.toml"></script>
 <mpy-config>plugins = ["!codemirror", "!deprecations-manager", "!donkey", "!py-editor", "!py-game", "!py-terminal"]</mpy-config><!-- Workaround https://github.com/pyscript/pyscript/issues/2430#issuecomment-3785280652 -->
 <div id="flexColumn100">
   <div id="flex1">
@@ -119,7 +119,7 @@
         </div>
         <span class="image-description hidden"></span>
         <div class="image-display-block hidden">
-          <a class="image-display-link" title="Click for full screen preview" target="_blank" href="">
+          <a class="image-display-link" title="Click for the full screen preview" target="_blank" href="">
             <img class="image-display" alt="preview" src=".">
           </a>
           <div class="image-download-block" title="Click to download to your device">

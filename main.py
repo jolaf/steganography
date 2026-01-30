@@ -1,5 +1,5 @@
 # ruff: noqa: E402  # pylint: disable=wrong-import-order, wrong-import-position
-# Note: this module is PyScript-only, it won't work outside of browser
+# Note: this module is PyScript-only, it won't work outside the browser
 from __future__ import annotations
 
 PREFIX = "[main]"
@@ -52,7 +52,7 @@ type Blob = JsProxy  # type: ignore[no-redef]  # ToDo: File a bug about this
 type Event = JsProxy  # type: ignore[no-redef]
 type Node = JsProxy  # type: ignore[no-redef]
 
-from workerlib import connectToWorker, typechecked, _elapsedTime as elapsedTime, __info__, __versions__, Worker
+from workerlib import connectToWorker, diagnostics, elapsedTime, systemVersions, typechecked, Worker
 
 from numpy import __version__ as numpyVersion
 from PIL import __version__ as pilVersion
@@ -62,9 +62,9 @@ try:
 
     @typechecked
     def getDefaultTaskName() -> str:
-        return cast(str, generate_slug(2))
+        return generate_slug(2)
 except ImportError:
-    print(PREFIX, 'WARNING: coolname is not available, using "steganography" as default task name')
+    print(PREFIX, 'WARNING: `coolname` is not available, using "steganography" as the default task name')
 
     @typechecked
     def getDefaultTaskName() -> str:
@@ -97,7 +97,7 @@ TITLE = 'title'
 VALUE = 'value'
 
 # <INPUT> types
-TEXT = 'text'  # Also is used as a shortcut for innerText attribute
+TEXT = 'text'  # Also is used as a shortcut for the `textContent` attribute
 CHECKBOX = 'checkbox'
 
 # Event names
@@ -189,7 +189,7 @@ def resetInput(element: str | Element) -> None:
         element.checked = (getAttr(element, CHECKED) == 'true')  # pylint: disable=superfluous-parens
     else:
         element.value = getAttr(element, VALUE)
-    #dispatchEvent(element, CHANGE)  # We don't do it to avoid running pipeline multiple times when resetting all options
+    #dispatchEvent(element, CHANGE)  # We don't do it to avoid running the pipeline multiple times when resetting all options
 
 @typechecked
 def dispatchEvent(element: str | Element, eventType: str) -> None:  # ToDo: remove it when everything is working
@@ -282,7 +282,7 @@ class Options(Storage):
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # Constructor is only called internally, so we don't know the args and don't care
         super().__init__(*args, **kwargs)
 
-        # These fields define names, types and DEFAULT values for options, actual values are stored in Storage
+        # These fields define names, types and DEFAULT values for options; actual values are stored in Storage
         self.language = next(iter(self.LANGUAGES))
         self.taskName = ""
         self.maxPreviewWidth = 0
@@ -313,15 +313,15 @@ class Options(Storage):
         async def resetEventHandler(_e: Event) -> None:
             for (name, element) in elements.items():
                 if name == 'taskName':
-                    self[name] = element.value = getDefaultTaskName()  # Save to database
+                    self[name] = element.value = getDefaultTaskName()  # Save to the database
                 else:
-                    resetInput(element)  # Doesn't reset language because that is <SELECT>, not <INPUT>
+                    resetInput(element)  # Doesn't reset the language because that is <SELECT>, not <INPUT>
             await ImageBlock.resetUploads()
 
     def configureElement(self, name: str, defaultValue: TagAttrValue) -> Element:
         valueType = type(defaultValue)
         typeDefaultValue = self.TYPE_DEFAULTS.get(valueType)
-        value = self.get(name, defaultValue)  # Read from database
+        value = self.get(name, defaultValue)  # Read from the database
         assert isinstance(value, valueType), f"Incorrect type for option {name}: {type(value).__name__}, expected {valueType.__name__}"
         elementID = '-'.join(chain(('option',), (word.lower() for word in findall(r'[a-z]+|[A-Z][a-z]*|[A-Z]+', name))))
         element = getElementByID(elementID)
@@ -368,23 +368,23 @@ class Options(Storage):
                         newValue = self.get(name, getDefaultTaskName())
             elif valueType is bool:  # checkbox
                 pass
-            elif newValue and newValue != self.UNSET:  # int or float as non-empty string
+            elif newValue and newValue != self.UNSET:  # int or float as a non-empty string
                 try:
                     if (newValue := valueType(newValue)) <= 0:  # type: ignore[operator]
                         raise ValueError(f"Must be positive, got {newValue}")  # noqa: TRY301
                 except ValueError:
-                    newValue = self.get(name, defaultValue)  # Read from database
+                    newValue = self.get(name, defaultValue)  # Read from the database
             else:  # int or float from empty string or UNSET
                 assert typeDefaultValue is not None
                 newValue = typeDefaultValue if newValue == self.UNSET else defaultValue
-            self[name] = newValue  # Save to database
+            self[name] = newValue  # Save to the database
             if valueType in (int, float):
                 element.value = self.UNSET if newValue == typeDefaultValue else newValue
             elif valueType is str:
-                element.value = newValue  # Write processed value back to the input field
+                element.value = newValue  # Write the processed value back to the input field
             if name in ('maxPreviewWidth', 'maxPreviewHeight', 'randomRotate', 'randomFlip'):  # pylint: disable=use-set-for-membership
                 self.updateStyle()
-            await self.sync()  # Make sure database is really updated
+            await self.sync()  # Make sure the database is really updated
             if name == 'language':
                 reload()
 
@@ -405,14 +405,14 @@ class Options(Storage):
     async def saveFile(self, name: str, data: Buffer | None, fileName: str | None = None) -> None:
         if data:
             assert fileName, repr(fileName)
-            self[f'file-{name}'] = bytearray(data)  # Write to database
+            self[f'file-{name}'] = bytearray(data)  # Write to the database
             self[f'file-{name}-fileName'] = fileName
             await self.sync()
         else:
             await self.delFile(name)
 
     def loadFile(self, name: str) -> tuple[bytearray | None, str | None]:
-        data: bytearray | None = self.get(f'file-{name}')  # Read from database
+        data: bytearray | None = self.get(f'file-{name}')  # Read from the database
         return (data, self.get(f'file-{name}-fileName'))
 
     async def delFile(self, name: str) -> None:
@@ -441,7 +441,7 @@ class Options(Storage):
         defaultValue = super().__getattribute__(name)
         if not isinstance(defaultValue, TagAttrValue):
             return defaultValue  # Not an option field
-        ret = self.get(name, None)  # Read from database
+        ret = self.get(name, None)  # Read from the database
         return defaultValue if ret is None else ret
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -570,7 +570,7 @@ class ImageBlock:
                 ret = await processFunction(*sourceImages, **options)
             else:
                 ret = await to_thread(processFunction, *sourceImages, **options)
-            log(f"Completed processing in {elapsedTime(startTime)}")
+            log(f"Completed processing {elapsedTime(startTime)}")
             if ret is None:  # No changes were made, use original image
                 assert len(sourceImages) == 1 and sourceImages[0], sourceImages  # noqa: PT018
                 ret = sourceImages
@@ -592,7 +592,7 @@ class ImageBlock:
         return cast(tuple[tuple[int, int], Transpose | None, bool] | None, ret)
 
     @classmethod
-    async def pipeline(cls) -> None:  # Called from upload event handler to generate secondary images
+    async def pipeline(cls) -> None:  # Called from the upload event handler to generate secondary images
         startTime = time()
         log("Started pipeline")
         assert cls.worker
@@ -622,7 +622,7 @@ class ImageBlock:
         for imageBlock in cls.imageBlocks.values():
             imageBlock.dirty = False
 
-        log(f"Completed pipeline in {elapsedTime(startTime)}")
+        log(f"Completed pipeline {elapsedTime(startTime)}")
 
     def __init__(self, stage: Stage) -> None:
         self.stage = stage
@@ -784,7 +784,7 @@ class ImageBlock:
             if imageBytes == self.REMOVED:
                 (imageBytes, fileName) = (None, None)
         elif filePath := self.PRELOADED_FILES.get(self.stage):
-            log("Fetching preloaded file:", filePath)
+            log("Fetching the preloaded file:", filePath)
             await repaint()
             (imageBytes, fileName) = (await fetch(filePath).arrayBuffer(), Path(filePath).name)  # type: ignore[attr-defined]
             if imageBytes:
@@ -817,7 +817,7 @@ class ImageBlock:
 
     async def uploadFile(self, fileName: str | None = None, data: Blob | None = None) -> None:
         assert self.isUpload
-        if not fileName:  # E.g. Esc was pressed at upload dialog
+        if not fileName:  # E.g., Esc was pressed at upload dialog
             return
         self.startOperation(_("Loading image"))
         await repaint()
@@ -849,7 +849,7 @@ def exceptionHandler(problem: str,
         exceptionType = type(exception)
     if traceback is None and exception:
         traceback = exception.__traceback__
-    # Filter traceback to remove empty lines:
+    # Filter the traceback to remove empty lines:
     tracebackStr = '\n' + '\n'.join(line for line in '\n'.join(extract_tb(traceback).format()).splitlines() if line.strip()) if traceback else ''
     log(f"""
 ERROR {problem}, type {exceptionType.__name__}: {exception}{tracebackStr}
@@ -861,7 +861,7 @@ Please make a screenshot and report it to @jolaf at Telegram or VK or to vmzakha
 def mainExceptionHandler(exceptionType: type[BaseException] | None = None,
                          exception: BaseException | None = None,
                          traceback: TracebackType | None = None) -> None:
-    exceptionHandler("Uncaught exception in main thread",
+    exceptionHandler("Uncaught exception in the main thread",
                      exceptionType, exception, traceback)
 
 @typechecked
@@ -877,10 +877,10 @@ async def main() -> None:
     sys.excepthook = mainExceptionHandler
     get_running_loop().set_exception_handler(loopExceptionHandler)
 
-    for info in __info__:
+    for info in diagnostics:
         log(info)
 
-    for (product, version) in __versions__.items():
+    for (product, version) in systemVersions.items():
         if element := page[product.lower() + '-version']:
             element.textContent = version
 

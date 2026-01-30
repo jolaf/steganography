@@ -81,14 +81,14 @@ INVERSE_TRANSPOSE: Mapping[Transpose | None, Transpose | None] = {
     ROTATE_270: ROTATE_90,
 }
 
-N: Final[int] = 2 * 2  # Size of "unit" pixel block to operate on
+N: Final[int] = 2 * 2  # Size of a “unit” pixel block to operate on
 type Bit = Literal[0, 1]
 BitsN = tuple[Bit, Bit, Bit, Bit]  # Superclass for BitBlock
 Array = np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.bool]]
 type ArrayMap = tuple[Array, Mapping[int, Mapping[int, Sequence[Array]]]]
 
 EXPECTED_COMPLIMENT_LENGTHS: Final[Mapping[tuple[int, int, int], int]] = {
-    (2, 2, 3): 4,  # I was too lazy to figure out the formula
+    (2, 2, 3): 4,  # I was too lazy to figure out the formula…
     (2, 2, 4): 1,
     (2, 3, 3): 2,
     (2, 3, 4): 2,
@@ -170,12 +170,12 @@ class BitBlock(BitsN):
         return (a1, a2)
 
 @typechecked
-def log(*args: Any) -> None:
-    print(*args)
+def log(*args: Any, **kwargs: Any) -> None:
+    print("[steganography]", *args, **kwargs)
 
 @typechecked
 def error(*args: Any) -> None:
-    print("ERROR:", *args, file = stderr)
+    log("ERROR:", *args, file = stderr)
     sysExit(1)
 
 @typechecked
@@ -194,7 +194,7 @@ def funcName(func: Callable[..., Any]) -> str:
 async def timeToThread[T](func: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
     startTime = time()
     ret = await to_thread(func, *args, **kwargs)
-    print(f"[steganography] {elapsedTime(startTime)}: {funcName(func)}")
+    log(f"{elapsedTime(startTime)}: {funcName(func)}")
     return ret
 
 @typechecked
@@ -232,7 +232,7 @@ async def imageToBytes(image: Image) -> memoryview:
     return stream.getbuffer()
 
 @typechecked
-def imageToJS(image: Image) -> Sequence[Any]:  # ToDo: Rewrite using dict() for better transport readability
+def imageToJS(image: Image) -> tuple[str, tuple[int, int], bytes, str, str, int, int]:  # ToDo: Rewrite using dict() for better transport readability
     return (image.mode, image.size, image.tobytes(), 'raw', image.mode, 0, 1)
 
 @typechecked
@@ -248,7 +248,7 @@ def hasAlpha(image: Image) -> bool:
 
 @typechecked
 def getImageMode(image: Image) -> str:
-    """Returns human-readable description of the specified `Image` mode."""
+    """Returns a human-readable description of the specified `Image` mode."""
     mode = image.mode
     if mode.startswith('I'):
         typeStr = imageGetMode(mode).typestr
@@ -321,7 +321,7 @@ async def prepare(image: Image,
         if (resizeWidth, resizeHeight) != processed.size:
             processed = await timeToThread(processed.resize, (resizeWidth, resizeHeight), RESAMPLING)
     if image.mode == BW1 and hasAlpha(image) and processed is grayscale:
-        return None  # Indicates that no processing was actually performed and original image could be used as it was
+        return None  # Indicates that no processing was actually performed and the original image could be used as it was
     processed = await timeToThread(processed.convert, BW1, dither = Dither.FLOYDSTEINBERG if dither else Dither.NONE)
     finalize(processed)
     return processed
@@ -387,7 +387,7 @@ async def encrypt(source: Image,  # noqa: C901
     dw = lockWidth - source.width
     dh = lockHeight - source.height
 
-    # (posX, posY) is (random) position of the key relative to the lock, keeping to the sides
+    # (posX, posY) is the (random) position of the key relative to the lock, keeping to the sides
     if dw == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
         (posX, posY) = (0, choice(range(dh + 1)))  # 0 if equal
     elif dh == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
@@ -415,8 +415,8 @@ async def encrypt(source: Image,  # noqa: C901
 
         # PIL/NumPy array indexes are `y` first, `x` second
         lockArray = np.empty((lockHeight, lockWidth), bool)  # These arrays are write-only, so we don't care about the initial values.
-        keyArray = np.empty((keyHeight, keyWidth), bool)   # Also creating empty arrays is faster than filling with 1's or 0's.
-        # Also empty arrays produce recognizable visual pattern in images, and that allows to notice
+        keyArray = np.empty((keyHeight, keyWidth), bool)   # Also, creating empty arrays is faster than filling with 1's or 0's.
+        # Also, empty arrays produce a recognizable visual pattern in images, and that allows to notice
         # if some part of the image was not written to, as it should be.
 
     else:
@@ -463,7 +463,7 @@ async def encrypt(source: Image,  # noqa: C901
         for ((y, x), s) in np.ndenumerate(sourceArray):
             if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
                 if time() - startTime > 10:
-                    print('Y:', y)
+                    log(f"Encrypting… y={y}")
                     startTime = time()
                 await sleep(0)
 
@@ -483,7 +483,7 @@ async def encrypt(source: Image,  # noqa: C901
             for lockX in range(0, lockWidth, N):
                 if lockX == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
                     if time() - startTime > 10:
-                        print('Y:', lockY // N)  # ToDo: Replace with percent
+                        log(f"Encrypting… y={lockY // N}")  # ToDo: Replace with percent
                         startTime = time()
                     await sleep(0)
 
@@ -505,7 +505,7 @@ async def encrypt(source: Image,  # noqa: C901
         for ((y, x), s) in np.ndenumerate(sourceArray):
             if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
                 if time() - startTime > 10:
-                    print('Y:', y)
+                    log(f"Encrypting… y={y}")
                     startTime = time()
                 await sleep(0)
 
@@ -566,11 +566,11 @@ async def overlay(lockImage: Image, keyImage: Image, *, position: tuple[int, int
 @typechecked
 def main(*args: str) -> None:
     parser = ArgumentParser()
-    parser.add_argument('-r', '--rotate', help = 'rotate image to a random angle', action = 'store_true')
-    parser.add_argument('-s', '--resize', help = 'resize image to the specified factor or size')
+    parser.add_argument('-r', '--rotate', help = 'rotate the image to a random angle', action = 'store_true')
+    parser.add_argument('-s', '--resize', help = 'resize the image to the specified factor or size')
     parser.add_argument('-d', '--dither', help = 'dither image when converting to 1-bit format', action = 'store_true')
     parser.add_argument('-b', '--smooth', help = 'smoother background (doubles the resolution)', action = 'store_true')
-    parser.add_argument('inputImage', help = 'path to input image file to process')
+    parser.add_argument('inputImage', help = 'path to the input image file to process')
     options = parser.parse_args(args)
     size: int | str
     if size := options.resize:

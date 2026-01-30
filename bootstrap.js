@@ -70,13 +70,13 @@ document.getElementById('location').textContent = '/' + locationName;
 setTimeout(() => {
     if (typeof pyodidePresent === 'undefined') {
         const logElement = document.getElementById('log');
-        logElement.textContent = "ERROR: Pyodide failed to load, do you have Internet access? Press F12 and check browser console for details.";
+        logElement.textContent = "ERROR: Pyodide failed to load, do you have Internet access? Press F12 and check the browser console for details.";
         logElement.classList.add('error');
     } else {
         setTimeout(() => {
             if (typeof pyscriptPresent === 'undefined') {
                 const logElement = document.getElementById('log');
-                logElement.textContent = "ERROR: PyScript failed to load, do you have Internet access? Press F12 and check browser console for details.";
+                logElement.textContent = "ERROR: PyScript failed to load, do you have Internet access? Press F12 and check the browser console for details.";
                 logElement.classList.add('error');
             }
         }, 20000); // Wait 20 more seconds before deciding that PyScript failed to load

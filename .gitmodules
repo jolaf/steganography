@@ -1,3 +1,6 @@
+[submodule "workerlib"]
+	path = workerlib
+	url = https://github.com/jolaf/workerlib.git
 [submodule "pyscript-stubs"]
 	path = pyscript-stubs
 	url = https://github.com/jolaf/pyscript-stubs.git
