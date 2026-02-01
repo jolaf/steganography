@@ -7,3 +7,11 @@ Create build.py, freeze dependency versions!
 <link rel="alternate" hreflang="ru" href="/ru/"> https://github.com/untra/polyglot
 File a bug against PyScript about UI freezing when large image is resized in a worker
 When replacing any image, kill everything below the chain (still not working!)
+
+workerlib
+- Mention Micropython is not supported as code is Python 3.13
+- Add documentation on remote module
+- Add "pickle" encoder/decoder for adapters
+- Add "use pickle for classes without adapters"
+- Add "universal" calling sub-worker
+- Add "pickle" calling sub-worker

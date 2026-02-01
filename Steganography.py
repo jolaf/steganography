@@ -87,7 +87,7 @@ BitsN = tuple[Bit, Bit, Bit, Bit]  # Superclass for BitBlock
 Array = np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.bool]]
 type ArrayMap = tuple[Array, Mapping[int, Mapping[int, Sequence[Array]]]]
 
-EXPECTED_COMPLIMENT_LENGTHS: Final[Mapping[tuple[int, int, int], int]] = {
+EXPECTED_COMPLEMENT_NUMBERS: Final[Mapping[tuple[int, int, int], int]] = {
     (2, 2, 3): 4,  # I was too lazy to figure out the formula…
     (2, 2, 4): 1,
     (2, 3, 3): 2,
@@ -125,7 +125,7 @@ class BitBlock(BitsN):
 
         nBitsSet: Final[Mapping[int, Sequence[BitBlock]]] = {n: generateNBitSet(n) for n in range(2, N)}
 
-        def compliment(block: BitBlock, n: int, total: int) -> Sequence[BitBlock]:
+        def complement(block: BitBlock, n: int, total: int) -> Sequence[BitBlock]:
             assert 2 <= n < N
             assert 3 <= total <= N
 
@@ -137,7 +137,7 @@ class BitBlock(BitsN):
                 return (b for b in blocks if overlayBits(block, b).n() == n)
 
             ret: Sequence[BitBlock] = tuple(filterByOverlay(block, nBitsSet[n], total))
-            assert len(ret) == EXPECTED_COMPLIMENT_LENGTHS[(block.n(), n, total)], (len(ret), block.n(), n, total, block, ret)
+            assert len(ret) == EXPECTED_COMPLEMENT_NUMBERS[(block.n(), n, total)], (len(ret), block.n(), n, total, block, ret)
             return ret
 
         blockMap: Final[dict[int, Sequence[ArrayMap]]] = {}
@@ -145,13 +145,13 @@ class BitBlock(BitsN):
         for a in range(2, N):
             data: list[ArrayMap] = []
             for block in nBitsSet[a]:
-                compliments: dict[int, Mapping[int, Sequence[Array]]] = {}
+                complements: dict[int, Mapping[int, Sequence[Array]]] = {}
                 for n in range(2, N):
                     totals: dict[int, Sequence[Array]] = {}
                     for total in range(3, N + 1):
-                        totals[total] = tuple(b.toArray() for b in compliment(block, n, total))
-                    compliments[n] = totals
-                data.append((block.toArray(), compliments))
+                        totals[total] = tuple(b.toArray() for b in complement(block, n, total))
+                    complements[n] = totals
+                data.append((block.toArray(), complements))
             blockMap[a] = tuple(data)
 
         cls.blockMap = blockMap
@@ -232,12 +232,24 @@ async def imageToBytes(image: Image) -> memoryview:
     return stream.getbuffer()
 
 @typechecked
-def imageToJS(image: Image) -> tuple[str, tuple[int, int], bytes, str, str, int, int]:  # ToDo: Rewrite using dict() for better transport readability
-    return (image.mode, image.size, image.tobytes(), 'raw', image.mode, 0, 1)
+def imageToJS(image: Image) -> Mapping[str, Any]:
+    return {
+        'mode': image.mode,
+        'size': image.size,
+        'data': image.tobytes(),
+        'decoder_name': 'raw',
+        'args': (image.mode, 0, 1),
+    }
 
 @typechecked
-def imageFromJS(serialized: Sequence[Any]) -> Image:
-    image = imageFromBuffer(*serialized)
+def imageFromJS(serialized: Mapping[str, Any]) -> Image:
+    image = imageFromBuffer(
+        serialized['mode'],
+        serialized['size'],
+        serialized['data'],
+        serialized['decoder_name'],
+        *serialized['args'],
+    )
     if not image.format:
         image.format = getImageFormatFromExtension('')
     return image
