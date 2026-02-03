@@ -184,17 +184,20 @@ def elapsedTime(startTime: float | int) -> str:  # noqa: PYI041  # beartype is r
     return f"{round(dt)}s" if dt >= 1 else f"{round(dt * 1000)}ms"
 
 @typechecked
-def funcName(func: Callable[..., Any]) -> str:
-    module = func.__module__
-    if not module or module in ('builtin', 'builtins', '__builtin__', '__builtins__'):  # pylint: disable=use-set-for-membership
-        return func.__qualname__
-    return f"{module}.{func.__qualname__}"
+def fullName(obj: object) -> str:
+    if not callable(obj):
+        obj = type(obj)
+    assert hasattr(obj, '__qualname__'), obj
+    qualName: str = obj.__qualname__
+    if (moduleName := obj.__module__) in ('', 'builtins'):  # pylint: disable=use-set-for-membership
+        return qualName
+    return f"{moduleName}.{qualName}"
 
 @typechecked
 async def timeToThread[T](func: Callable[..., T], /, *args: Any, **kwargs: Any) -> T:
     startTime = time()
     ret = await to_thread(func, *args, **kwargs)
-    log(f"{elapsedTime(startTime)}: {funcName(func)}")
+    log(f"{elapsedTime(startTime)}: {fullName(func)}")
     return ret
 
 @typechecked

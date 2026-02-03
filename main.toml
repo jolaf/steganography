@@ -27,3 +27,4 @@ packages = [
     ["Image", "imageToJS", "imageFromJS"],
     ["Transpose", "None", "None"],
 ]
+#"None" = ["Any", "pickle", "pickle"]

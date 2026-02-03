@@ -9,9 +9,12 @@ File a bug against PyScript about UI freezing when large image is resized in a w
 When replacing any image, kill everything below the chain (still not working!)
 
 workerlib
-- Mention Micropython is not supported as code is Python 3.13
++ Mention Micropython is not supported as code is Python 3.13
 - Add documentation on remote module
-- Add "pickle" encoder/decoder for adapters
-- Add "use pickle for classes without adapters"
-- Add "universal" calling sub-worker
-- Add "pickle" calling sub-worker
+- Describe "minimum mode" with unpacking JsProxies and that's all, can be used for other languages too. Switch off adapters, that's it?
++ Add "pickle" encoder/decoder for adapters
+- Add "unsafe" adapter for unsafe types only - maybe "Any" should do that? Adapters are for unknown classes, so looks like this is the right way
++ Add "anyCall" calling sub-worker, enable it from worker side. Sends (funcName, args, kwargs) as a single structure
+- Add "pickle" calling sub-worker, inherits the previous one
++ ["Enum", "None", "None"] - for any Enums, mention in doc
+- Add checking constructor arguments when creating None encoder

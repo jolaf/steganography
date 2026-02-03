@@ -23,3 +23,4 @@ sync_main_only = true
     ["Image", "imageToJS", "imageFromJS"],
     ["Transpose", "None", "None"],
 ]
+#"None" = ["Any", "pickle", "pickle"]
