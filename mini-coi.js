@@ -3,6 +3,9 @@
 /*! Downloaded from https://raw.githubusercontent.com/WebReflection/mini-coi/main/mini-coi.js */
 /*! See https://github.com/WebReflection/mini-coi#readme */
 /*! See https://docs.pyscript.net/2026.1.1/user-guide/workers/#http-headers */
+
+/* global console */
+
 (({ document: d, navigator: { serviceWorker: s } }) => {
   if (d) {
     const { currentScript: c } = d;
@@ -24,8 +27,9 @@
         h.set('Cross-Origin-Opener-Policy', 'same-origin');
         h.set('Cross-Origin-Embedder-Policy', 'require-corp');
         h.set('Cross-Origin-Resource-Policy', 'cross-origin');
-        return new Response(status == 204 ? null : body, { status, statusText, headers: h });
+        return new Response(status === 204 ? null : body, { status, statusText, headers: h });
       }));
     });
   }
 })(self);
+console.log("[javascript] mini-coi started");

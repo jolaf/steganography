@@ -1,5 +1,10 @@
+#
+# Note: this module is based on PyScript / Pyodide, it is useless outside the browser
+#
+# Tested on PyScript 26.1.1 / Pyodide 0.29.1 / Python 3.13.2
+#
 # ruff: noqa: E402  # pylint: disable=wrong-import-order, wrong-import-position
-# Note: this module is PyScript-only, it won't work outside the browser
+#
 from __future__ import annotations
 
 PREFIX = "[main]"
@@ -26,7 +31,7 @@ from pyscript import storage, Storage
 from pyscript.web import page, Element  # pylint: disable=import-error, no-name-in-module
 from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
 
-from js import location, Blob, CSSStyleSheet, Event, Node, NodeFilter, Text, Uint8Array, URL
+from js import console, location, Blob, CSSStyleSheet, Event, Node, NodeFilter, Text, Uint8Array, URL
 from pyodide.ffi import JsNull, JsProxy  # pylint: disable=import-error, no-name-in-module
 
 # We'll redefine these classes to JsProxy below, so we have to save all references we actually need
@@ -64,7 +69,7 @@ try:
     def getDefaultTaskName() -> str:
         return generate_slug(2)
 except ImportError:
-    print(PREFIX, 'WARNING: `coolname` is not available, using "steganography" as the default task name')
+    console.warn(PREFIX, '`coolname` is not available, using "steganography" as the default task name')
 
     @typechecked
     def getDefaultTaskName() -> str:
