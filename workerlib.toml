@@ -24,3 +24,4 @@ sync_main_only = true
     ["Transpose", "None", "None"],
 ]
 #"None" = ["Any", "pickle", "pickle"]
+#"workerlib" = ["All", "pickle", "pickle"]

@@ -850,9 +850,10 @@ def exceptionHandler(problem: str,
     if traceback is None and exception:
         traceback = exception.__traceback__
     # Filter the traceback to remove empty lines:
-    tracebackStr = '\n' + '\n'.join(line for line in '\n'.join(extract_tb(traceback).format()).splitlines() if line.strip()) if traceback else ''
+    tracebackStr = '\n====== Traceback:\n' + '\n'.join(line for line in '\n'.join(extract_tb(traceback).format()).splitlines() if line.strip()) if traceback else ''
     log(f"""
-ERROR {problem}, type {exceptionType.__name__}: {exception}{tracebackStr}
+{PREFIX} ERROR: {problem}, type {exceptionType.__name__}:
+{exception}{tracebackStr}
 
 Please make a screenshot and report it to @jolaf at Telegram or VK or to vmzakhar@gmail.com. Thank you!
 """, showToUser = showToUser)

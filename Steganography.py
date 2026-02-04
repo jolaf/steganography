@@ -426,7 +426,7 @@ async def encrypt(source: Image,  # noqa: C901
 
         N = 2  # pylint: disable=redefined-outer-name
         (lockWidth, lockHeight) = lockSize = (lockWidth * N, lockHeight * N)
-        (keyWidth, keyHeight) = keySize = (source.width * N, source.height * N)
+        (keyWidth, keyHeight) = _keySize = (source.width * N, source.height * N)
 
         # PIL/NumPy array indexes are `y` first, `x` second
         lockArray = np.empty((lockHeight, lockWidth), bool)  # These arrays are write-only, so we don't care about the initial values.
