@@ -28,6 +28,7 @@ from contextlib import suppress
 from datetime import datetime
 from enum import auto, verify, Enum, CONTINUOUS, UNIQUE
 from gettext import translation, GNUTranslations
+from html import escape
 from inspect import iscoroutinefunction, signature
 from itertools import chain
 from pathlib import Path
@@ -113,8 +114,12 @@ PLACEHOLDER = 'placeholder'
 TITLE = 'title'
 VALUE = 'value'
 
+# Special attributes
+TEXT_CONTENT = 'textContent'
+INNER_HTML = 'innerHTML'
+
 # <INPUT> types
-TEXT = 'text'  # Also is used as a shortcut for the `textContent` attribute
+TEXT = 'text'
 CHECKBOX = 'checkbox'
 
 # Event names
@@ -181,18 +186,18 @@ def show(element: str | Element) -> None:
 def getAttr(element: str | Element, attr: str, default: str | None = None) -> str | None:
     if isinstance(element, str):
         element = getElementByID(element)
-    assert isinstance(element, Element), type(element).__name__
-    ret = element.textContent if attr == TEXT else element.getAttribute(attr)
+    assert isinstance(element, Element), type(element)
+    ret = getattr(element, attr) if attr in (TEXT_CONTENT, INNER_HTML) else element.getAttribute(attr)
     return default if ret is None or isinstance(ret, JsNull) else ret
 
 @typechecked
 def setAttr(element: str | Element, attr: str, value: TagAttrValue, onlyIfAbsent: bool = False) -> None:
     if isinstance(element, str):
         element = getElementByID(element)
-    if attr == TEXT:
-        if not onlyIfAbsent or not element.textContent:
-            assert isinstance(value, str), type(value).__name__
-            element.textContent = value
+    if attr in (TEXT_CONTENT, INNER_HTML):
+        if not onlyIfAbsent or not getattr(element, attr):
+            assert isinstance(value, str), type(value)
+            setattr(element, attr, value)
     elif not onlyIfAbsent or not element.getAttribute(attr):
         element.setAttribute(attr, value)
 
@@ -665,7 +670,7 @@ class ImageBlock:
                     break
 
         # Further configure children
-        self.setAttr(TITLE, TEXT, _(self.BLOCK_NAMES[self.stage]))
+        self.setAttr(TITLE, TEXT_CONTENT, _(self.BLOCK_NAMES[self.stage]))
         downloadLink = self.getElement('download-link')
 
         @when(CLICK, self.getElement('download'))
@@ -726,7 +731,7 @@ class ImageBlock:
         if not fileName:
             fileName = f'{self.options.taskName}-{self.name}.png'
         self.fileName = fileName
-        self.setAttr('name', TEXT, fileName)
+        self.setAttr('name', TEXT_CONTENT, fileName)
         self.setAttr('download-link', 'download', fileName)
 
     def setURL(self, url: str = '') -> None:
@@ -736,13 +741,13 @@ class ImageBlock:
         self.setAttr('display-link', 'href', url)
         self.setAttr('download-link', 'href', url)
 
-    def setDescription(self, message: str) -> None:
-        self.setAttr('description', TEXT, message)
+    def setDescription(self, message: str, isError: bool = False) -> None:
+        self.setAttr('description', INNER_HTML if isError else TEXT_CONTENT, message)
         self.show('description')
 
     def error(self, message: str, exception: BaseException | None = None) -> None:
-        self.setDescription(f"{_("ERROR")} {message}{f": {exception}" if exception else ''}")
-        self.hide('remove')
+        self.setDescription(f"{_("ERROR")} {message}{f": <pre>{escape(str(exception))}</pre>" if exception else ''}", isError = True)
+        self.hide('remove')  # ToDo: Should we really print stack here? Or just say "Press F12 to check console"? And what about phones?
         if exception:
             exceptionHandler("Exception at image processing", exception = exception, showToUser = False)
 
