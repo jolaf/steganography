@@ -1,7 +1,7 @@
 #
 # Note: this module is based on PyScript / Pyodide, it is useless outside the browser
 #
-# Tested on PyScript 26.1.1 / Pyodide 0.29.1 / Python 3.13.2
+# Tested on PyScript 26.2.1 / Pyodide 0.29.3 / Python 3.13.2
 #
 # ruff: noqa: E402  # pylint: disable=wrong-import-order, wrong-import-position
 #
@@ -138,7 +138,7 @@ def log(*args: Any, showToUser: bool = True) -> None:
     print(PREFIX, message)
     if showToUser:
         logElement = getElementByID('log')
-        toJsElement(logElement).append(f"{datetime.now().astimezone().strftime('%H:%M:%S')} {PREFIX} {message}\n")  # https://github.com/pyscript/pyscript/issues/2418
+        logElement.append(f"{datetime.now().astimezone().strftime('%H:%M:%S')} {PREFIX} {message}\n")
         test = message.upper()
         if any(word in test for word in ('ERROR', 'EXCEPTION')):
             logElement.classes.add('error')
@@ -170,7 +170,7 @@ def hide(element: str | Element) -> None:
 def show(element: str | Element) -> None:
     if isinstance(element, str):
         element = getElementByID(element)
-    with suppress(KeyError):
+    if HIDDEN in element.classes:
         element.classes.remove(HIDDEN)
 
 @typechecked
