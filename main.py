@@ -33,7 +33,7 @@ from inspect import iscoroutinefunction, signature
 from itertools import chain
 from pathlib import Path
 from re import findall, match
-import sys
+from sys import stderr  # pylint: disable=ungrouped-imports
 from time import time
 from traceback import extract_tb
 from types import TracebackType  # noqa: TC003
@@ -144,12 +144,12 @@ def toJsElement(element: Element | JsProxy) -> JsProxy:
 @typechecked
 def log(*args: Any, showToUser: bool = True) -> None:
     message = ' '.join(str(arg) for arg in args)
-    print(PREFIX, message)
+    isError = any(word in message.upper() for word in ('ERROR', 'EXCEPTION'))
+    print(PREFIX, message, file = stderr if isError else None, flush = True)
     if showToUser:
         logElement = getElementByID('log')
         logElement.append(f"{datetime.now().astimezone().strftime('%H:%M:%S')} {PREFIX} {message}\n")
-        test = message.upper()
-        if any(word in test for word in ('ERROR', 'EXCEPTION')):
+        if isError:
             logElement.classes.add('error')
 
 @typechecked
