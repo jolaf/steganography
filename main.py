@@ -1,11 +1,23 @@
 #
-# Note: this module is based on PyScript / Pyodide, it is useless outside the browser
+# Note: this app is based on PyScript / Pyodide, it is useless outside the browser
 #
 # Tested on PyScript 26.2.1 / Pyodide 0.29.3 / Python 3.13.2
 #
 # ruff: noqa: E402  # pylint: disable=wrong-import-order, wrong-import-position
 #
 from __future__ import annotations
+
+try:
+    from pyscript import document, fetch, when
+    from pyscript import storage, Storage
+    from pyscript.web import page, Element
+    from pyscript.ffi import to_js
+except ImportError as ex:
+    raise RuntimeError("\n\nThis app can only be run in a browser with PyScript / Pyodide\n") from ex
+
+from sys import version_info
+if version_info < (3, 13):  # noqa: UP036
+    raise RuntimeError("This app requires Python 3.13+")
 
 PREFIX = "[main]"
 print(PREFIX, "Loading app")
@@ -25,14 +37,6 @@ from time import time
 from traceback import extract_tb
 from types import TracebackType  # noqa: TC003
 from typing import cast, Any, ClassVar, Final
-
-if sys.version_info < (3, 13):  # noqa: UP036
-    raise RuntimeError("This module requires Python 3.13+")
-
-from pyscript import document, fetch, when
-from pyscript import storage, Storage
-from pyscript.web import page, Element  # pylint: disable=import-error, no-name-in-module
-from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-module
 
 from js import console, location, Blob, CSSStyleSheet, Event, Node, NodeFilter, Text, Uint8Array, URL
 from pyodide.ffi import JsNull, JsProxy  # pylint: disable=import-error, no-name-in-module

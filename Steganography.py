@@ -1,4 +1,9 @@
+# pylint: disable=wrong-import-position
 from __future__ import annotations
+
+from sys import version_info
+if version_info < (3, 12):  # noqa: UP036
+    raise RuntimeError("This module requires Python 3.12+")
 
 from argparse import ArgumentParser
 from asyncio import run, sleep, to_thread
@@ -10,12 +15,9 @@ from math import factorial as f
 from mimetypes import guess_type
 from re import split
 from secrets import choice, token_bytes
-from sys import argv, exit as sysExit, stderr, version_info
+from sys import argv, exit as sysExit, stderr  # pylint: disable=ungrouped-imports
 from time import time
 from typing import cast, Any, ClassVar, Final, IO, Literal, ReadOnly, TypedDict
-
-if version_info < (3, 13):  # noqa: UP036
-    raise RuntimeError("This module requires Python 3.13+")
 
 try:
     from PIL.Image import fromarray as imageFromArray, frombuffer as imageFromBuffer, new as imageNew, open as imageOpen
