@@ -874,24 +874,9 @@ Please make a screenshot and report it to @jolaf at Telegram or VK or to vmzakha
 """, showToUser = showToUser)
 
 @typechecked
-def mainExceptionHandler(exceptionType: type[BaseException] | None = None,
-                         exception: BaseException | None = None,
-                         traceback: TracebackType | None = None) -> None:
-    exceptionHandler("Uncaught exception in the main thread",
-                     exceptionType, exception, traceback)
-
-@typechecked
-def loopExceptionHandler(_loop: AbstractEventLoop,
-                         context: dict[str, Any]) -> None:
-    exceptionHandler("Uncaught exception in async loop",
-                     exception = context.get('exception'))
-
-@typechecked
 async def main() -> None:
     log("Starting app")
-
-    sys.excepthook = mainExceptionHandler
-    get_running_loop().set_exception_handler(loopExceptionHandler)
+    improveExceptionHandling(log)
 
     for info in diagnostics:
         log(info)
