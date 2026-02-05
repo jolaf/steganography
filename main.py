@@ -69,7 +69,7 @@ type Coroutine[T = object] = _Coroutine[None, None, T]
 type CoroutineFunction[T = object] = Callable[..., Coroutine[T]]
 type CallableOrCoroutine[T = object] = Callable[..., T | Coroutine[T]]
 
-from workerlib import connectToWorker, diagnostics, elapsedTime, systemVersions, typechecked, Worker
+from workerlib import connectToWorker, diagnostics, elapsedTime, fullName, improveExceptionHandling, systemVersions, typechecked, Worker
 
 from numpy import __version__ as numpyVersion
 from PIL import __version__ as pilVersion
@@ -339,7 +339,7 @@ class Options(Storage):
         valueType = type(defaultValue)
         typeDefaultValue = self.TYPE_DEFAULTS.get(valueType)
         value = self.get(name, defaultValue)  # Read from the database
-        assert isinstance(value, valueType), f"Incorrect type for option {name}: {type(value).__name__}, expected {valueType.__name__}"
+        assert isinstance(value, valueType), f"Incorrect type for option {name}: {type(value)}, expected {valueType}"
         elementID = '-'.join(chain(('option',), (word.lower() for word in findall(r'[a-z]+|[A-Z][a-z]*|[A-Z]+', name))))
         element = getElementByID(elementID)
         if name == 'language':  # <SELECT>
@@ -466,9 +466,9 @@ class Options(Storage):
             defaultValue = super().__getattribute__(name)
             if isinstance(defaultValue, TagAttrValue):
                 if isinstance(defaultValue, float):
-                    assert isinstance(value, float | int), f"Incorrect type for option {name}: {type(value).__name__}, expected int or float"
+                    assert isinstance(value, float | int), f"Incorrect type for option {name}: {type(value)}, expected int or float"
                 else:
-                    assert isinstance(value, type(defaultValue)), f"Incorrect type for option {name}: {type(value).__name__}, expected {type(defaultValue).__name__}"
+                    assert isinstance(value, type(defaultValue)), f"Incorrect type for option {name}: {type(value)}, expected {type(defaultValue)}"
                 self[name] = value
                 return
         super().__setattr__(name, value)
@@ -593,7 +593,7 @@ class ImageBlock:
             assert ret, repr(ret)
             assert isinstance(ret[0], Image), f"{type(ret)} {type(ret[0])}"
             retImages = tuple(r for r in ret if isinstance(r, Image))
-            assert len(retImages) == len(targets), f"{processFunction.__name__}() returned {len(ret)} images, expected {len(targets)}"
+            assert len(retImages) == len(targets), f"{fullName(processFunction)}() returned {len(ret)} images, expected {len(targets)}"
             for (target, image) in zip(targets, retImages, strict = True):
                 target.completeOperation(image, await imageToBytes(image))
             await repaint()
@@ -867,7 +867,7 @@ def exceptionHandler(problem: str,
     # Filter the traceback to remove empty lines:
     tracebackStr = '\n====== Traceback:\n' + '\n'.join(line for line in '\n'.join(extract_tb(traceback).format()).splitlines() if line.strip()) if traceback else ''
     log(f"""
-{PREFIX} ERROR: {problem}, type {exceptionType.__name__}:
+{PREFIX} ERROR: {problem}, type {fullName(exceptionType)}:
 {exception}{tracebackStr}
 
 Please make a screenshot and report it to @jolaf at Telegram or VK or to vmzakhar@gmail.com. Thank you!
