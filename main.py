@@ -83,7 +83,7 @@ except ImportError:
     def getDefaultTaskName() -> str:
         return "steganography"
 
-from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, EncryptExtra, Image
+from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, OverlayOptions, Image
 from Steganography import encrypt, overlay, prepare  # For extracting options only
 
 TagAttrValue = str | int | float | bool
@@ -549,12 +549,12 @@ class ImageBlock:
     @classmethod
     async def process(cls,
                       targetStages: Stage | Iterable[Stage],
-                      processFunction: CallableOrCoroutine[Image | tuple[Image, Image, *EncryptExtra]],
+                      processFunction: CallableOrCoroutine[Image | tuple[Image, Image, OverlayOptions | None]],
                       sourceStages: Stage | Iterable[Stage],
                       *,
                       optionalSourceStages: Stage | Iterable[Stage] | None = None,
                       affectedStages: Stage | Iterable[Stage] | None = None,
-                      options: Iterable[str] | Mapping[str, Any] = ()) -> EncryptExtra | None:
+                      options: Iterable[str] | Mapping[str, Any] = ()) -> OverlayOptions | None:
         sources = tuple(cls.imageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.imageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         optionalSources = tuple(cls.imageBlocks[stage] for stage in ((optionalSourceStages,) if isinstance(optionalSourceStages, Stage) else optionalSourceStages or ()))
@@ -599,7 +599,8 @@ class ImageBlock:
                 target.error(_("processing image"), ex)
             await repaint()
             ret = None
-        return cast(EncryptExtra | None, ret)
+        assert isinstance(ret, Mapping | None), type(ret)
+        return cast(OverlayOptions | None, ret)
 
     @classmethod
     async def pipeline(cls) -> None:  # Called from the upload event handler to generate secondary images
@@ -621,9 +622,9 @@ class ImageBlock:
                                 options = cls.PROCESS_OPTIONS[encrypt])
         options: dict[str, Any] | Sequence[str]
         if ret:
+            assert isinstance(ret, Mapping), type(ret)
             options = dict.fromkeys(cls.PROCESS_OPTIONS[overlay])
-            assert len(ret) == 3, ret
-            (options['position'], options['rotate'], options['flip']) = ret  # ToDo: Make encrypt return options dict ready for overlay
+            options.update(ret)
         else:
             options = cls.PROCESS_OPTIONS[overlay]
         ret = await cls.process(Stage.KEY_OVER_LOCK_TEST,

@@ -12,7 +12,7 @@ from re import split
 from secrets import choice, token_bytes
 from sys import argv, exit as sysExit, stderr, version_info
 from time import time
-from typing import cast, Any, ClassVar, Final, IO, Literal
+from typing import cast, Any, ClassVar, Final, IO, Literal, ReadOnly, TypedDict
 
 if version_info < (3, 13):  # noqa: UP036
     raise RuntimeError("This module requires Python 3.13+")
@@ -40,7 +40,11 @@ except ImportError:
 
 type ImagePath = StrOrBytesPath | Buffer | IO[bytes] | BytesIO  # The last one is needed for beartype, though it shouldn't be
 
-type EncryptExtra = tuple[tuple[int, int], Transpose | None, bool]  # ToDo: Replace with `TypedDict`
+@typechecked
+class OverlayOptions(TypedDict, total = False):
+    position: ReadOnly[tuple[int, int] | None]
+    rotate: ReadOnly[Transpose | None]
+    flip: ReadOnly[bool | None]
 
 PNG: Final[str] = 'PNG'
 
@@ -356,7 +360,7 @@ async def encrypt(source: Image,  # noqa: C901
                   lockHeight: int | None = None,
                   randomRotate: bool | None = None,
                   randomFlip: bool | None = None,
-                  smooth: bool | None = None) -> tuple[Image, Image, *EncryptExtra]:
+                  smooth: bool | None = None) -> tuple[Image, Image, OverlayOptions | None]:
     """
     Generates lock and key images from the specified source `Image`.
     If `lockMask` and/or `keyMask` are provided,
@@ -544,10 +548,12 @@ async def encrypt(source: Image,  # noqa: C901
     await sleep(0)
     finalize(lockImage)
     finalize(keyImage)
-    return (lockImage, keyImage, (posX * N, posY * N), rotateMethod, flip)  # `rotateMethod` says what to do with the key for decryption; flip after rotate!
+    extra = OverlayOptions(position = (posX * N, posY * N) if posX or posY else None, rotate = rotateMethod, flip = flip) \
+                    if any((posX, posY, rotateMethod is not None, flip)) else None
+    return (lockImage, keyImage, extra)  # `rotateMethod` says what to do with the key for decryption; flip after rotate!
 
 @typechecked
-async def overlay(lockImage: Image, keyImage: Image, *, position: tuple[int, int] = (0, 0), rotate: Transpose | None = None, flip: bool | None = None) -> Image:
+async def overlay(lockImage: Image, keyImage: Image, *, position: tuple[int, int] | None = None, rotate: Transpose | None = None, flip: bool | None = None) -> Image:
     """
     Emulates precise overlaying of two 1-bit images one on top of the other,
     as if they were printed on transparent film.
@@ -558,7 +564,7 @@ async def overlay(lockImage: Image, keyImage: Image, *, position: tuple[int, int
     assert lockImage.width >= keyImage.width, (lockImage.size, keyImage.size)
     assert lockImage.height >= keyImage.height, (lockImage.size, keyImage.size)
 
-    (posX, posY) = position
+    (posX, posY) = position or (0, 0)
     assert posX >= 0, position
     assert posY >= 0, position
 
@@ -610,9 +616,9 @@ if __name__ == '__main__':
     main(*argv[1:])
 else:
     __all__ = (
-        'EncryptExtra',
         'Image',
         'ImagePath',
+        'OverlayOptions',
         'Transpose',
         'encrypt',
         'getImageMode',
