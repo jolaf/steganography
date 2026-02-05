@@ -11,7 +11,7 @@ PREFIX = "[main]"
 print(PREFIX, "Loading app")
 
 from asyncio import create_task, get_running_loop, sleep, to_thread, AbstractEventLoop
-from collections.abc import Awaitable, Buffer, Callable, Iterable, Iterator, Mapping, Sequence  # beartype needs these things in runtime
+from collections.abc import Buffer, Callable, Coroutine as _Coroutine, Iterable, Iterator, Mapping, Sequence  # `beartype` needs these things in runtime
 from contextlib import suppress
 from datetime import datetime
 from enum import auto, verify, Enum, CONTINUOUS, UNIQUE
@@ -26,6 +26,9 @@ from traceback import extract_tb
 from types import TracebackType  # noqa: TC003
 from typing import cast, Any, ClassVar, Final
 
+if sys.version_info < (3, 13):  # noqa: UP036
+    raise RuntimeError("This module requires Python 3.13+")
+
 from pyscript import document, fetch, when
 from pyscript import storage, Storage
 from pyscript.web import page, Element  # pylint: disable=import-error, no-name-in-module
@@ -34,28 +37,33 @@ from pyscript.ffi import to_js  # pylint: disable=import-error, no-name-in-modul
 from js import console, location, Blob, CSSStyleSheet, Event, Node, NodeFilter, Text, Uint8Array, URL
 from pyodide.ffi import JsNull, JsProxy  # pylint: disable=import-error, no-name-in-module
 
-# We'll redefine these classes to JsProxy below, so we have to save all references we actually need
-newCSSStyleSheet = CSSStyleSheet.new
-newBlob = Blob.new
-newEvent = Event.new
-newUint8Array = Uint8Array.new
-
 # Simplifying addressing to JS functions
+newCSSStyleSheet = CSSStyleSheet.new
+del CSSStyleSheet  # Delete what we won't need anymore to make sure we really don't need it
+newUint8Array = Uint8Array.new
+del Uint8Array
 createObjectURL = URL.createObjectURL
 revokeObjectURL = URL.revokeObjectURL
-del URL  # We won't need it anymore
+del URL
 adoptedStyleSheets = document.adoptedStyleSheets
 createTreeWalker = document.createTreeWalker
-del document  # We won't need it anymore
+del document
 reload = location.reload
-del location  # We won't need it anymore
+del location
 
+# We'll redefine these classes to `JsProxy` below, so we have to save all references we actually need
+newBlob = Blob.new
+newEvent = Event.new
 TEXT_NODE = Node.TEXT_NODE
 
-# JS types that don't work as runtime type annotations
-type Blob = JsProxy  # type: ignore[no-redef]  # ToDo: File a bug about this
+# `beartype` sees these JS types as functions and fails to typecheck calls annotated with them, as of v0.22.9
+type Blob = JsProxy  # type: ignore[no-redef]
 type Event = JsProxy  # type: ignore[no-redef]
 type Node = JsProxy  # type: ignore[no-redef]
+
+type Coroutine[T = object] = _Coroutine[None, None, T]
+type CoroutineFunction[T = object] = Callable[..., Coroutine[T]]
+type CallableOrCoroutine[T = object] = Callable[..., T | Coroutine[T]]
 
 from workerlib import connectToWorker, diagnostics, elapsedTime, systemVersions, typechecked, Worker
 
@@ -75,7 +83,7 @@ except ImportError:
     def getDefaultTaskName() -> str:
         return "steganography"
 
-from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, Image, Transpose
+from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, EncryptExtra, Image
 from Steganography import encrypt, overlay, prepare  # For extracting options only
 
 TagAttrValue = str | int | float | bool
@@ -541,15 +549,12 @@ class ImageBlock:
     @classmethod
     async def process(cls,
                       targetStages: Stage | Iterable[Stage],
-                      processFunction: Callable[..., Image |
-                                                     tuple[Image, Image, tuple[int, int], Transpose | None, bool]] |
-                                       Callable[..., Awaitable[Image |
-                                                               tuple[Image, Image, tuple[int, int], Transpose | None, bool]]],  # ToDo: Create type for this
+                      processFunction: CallableOrCoroutine[Image | tuple[Image, Image, *EncryptExtra]],
                       sourceStages: Stage | Iterable[Stage],
                       *,
                       optionalSourceStages: Stage | Iterable[Stage] | None = None,
                       affectedStages: Stage | Iterable[Stage] | None = None,
-                      options: Iterable[str] | Mapping[str, Any] = ()) -> tuple[tuple[int, int], Transpose | None, bool] | None:
+                      options: Iterable[str] | Mapping[str, Any] = ()) -> EncryptExtra | None:
         sources = tuple(cls.imageBlocks[stage] for stage in ((sourceStages,) if isinstance(sourceStages, Stage) else sourceStages))
         targets = tuple(cls.imageBlocks[stage] for stage in ((targetStages,) if isinstance(targetStages, Stage) else targetStages))
         optionalSources = tuple(cls.imageBlocks[stage] for stage in ((optionalSourceStages,) if isinstance(optionalSourceStages, Stage) else optionalSourceStages or ()))
@@ -594,7 +599,7 @@ class ImageBlock:
                 target.error(_("processing image"), ex)
             await repaint()
             ret = None
-        return cast(tuple[tuple[int, int], Transpose | None, bool] | None, ret)
+        return cast(EncryptExtra | None, ret)
 
     @classmethod
     async def pipeline(cls) -> None:  # Called from the upload event handler to generate secondary images

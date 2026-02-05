@@ -10,9 +10,12 @@ from math import factorial as f
 from mimetypes import guess_type
 from re import split
 from secrets import choice, token_bytes
-from sys import argv, exit as sysExit, stderr
+from sys import argv, exit as sysExit, stderr, version_info
 from time import time
 from typing import cast, Any, ClassVar, Final, IO, Literal
+
+if version_info < (3, 13):  # noqa: UP036
+    raise RuntimeError("This module requires Python 3.13+")
 
 try:
     from PIL.Image import fromarray as imageFromArray, frombuffer as imageFromBuffer, new as imageNew, open as imageOpen
@@ -36,6 +39,8 @@ except ImportError:
         return func
 
 type ImagePath = StrOrBytesPath | Buffer | IO[bytes] | BytesIO  # The last one is needed for beartype, though it shouldn't be
+
+type EncryptExtra = tuple[tuple[int, int], Transpose | None, bool]  # ToDo: Replace with `TypedDict`
 
 PNG: Final[str] = 'PNG'
 
@@ -351,7 +356,7 @@ async def encrypt(source: Image,  # noqa: C901
                   lockHeight: int | None = None,
                   randomRotate: bool | None = None,
                   randomFlip: bool | None = None,
-                  smooth: bool | None = None) -> tuple[Image, Image, tuple[int, int], Transpose | None, bool]:
+                  smooth: bool | None = None) -> tuple[Image, Image, *EncryptExtra]:
     """
     Generates lock and key images from the specified source `Image`.
     If `lockMask` and/or `keyMask` are provided,
@@ -605,6 +610,7 @@ if __name__ == '__main__':
     main(*argv[1:])
 else:
     __all__ = (
+        'EncryptExtra',
         'Image',
         'ImagePath',
         'Transpose',
