@@ -22,7 +22,7 @@ if version_info < (3, 13):  # noqa: UP036
 PREFIX = "[main]"
 print(PREFIX, "Loading app")
 
-from asyncio import create_task, get_running_loop, sleep, to_thread, AbstractEventLoop
+from asyncio import create_task, sleep, to_thread
 from collections.abc import Buffer, Callable, Coroutine as _Coroutine, Iterable, Iterator, Mapping, Sequence  # `beartype` needs these things in runtime
 from contextlib import suppress
 from datetime import datetime
@@ -602,7 +602,7 @@ class ImageBlock:
             for (target, image) in zip(targets, retImages, strict = True):
                 target.completeOperation(image, await imageToBytes(image))
             await repaint()
-            ret = ret[len(targets):] if len(ret) > len(targets) else None
+            ret = ret[len(targets)] if len(ret) > len(targets) else None
         except Exception as ex:  # noqa : BLE001
             for target in targets:
                 target.error(_("processing image"), ex)

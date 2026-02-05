@@ -182,7 +182,7 @@ class BitBlock(BitsN):
 
 @typechecked
 def log(*args: Any, **kwargs: Any) -> None:
-    print("[steganography]", *args, **kwargs)
+    print("[steganography]", *args, flush = True, **kwargs)
 
 @typechecked
 def error(*args: Any) -> None:
@@ -607,7 +607,7 @@ def main(*args: str) -> None:
         except ValueError:
             tokens = split(r'\D', size)
             if len(tokens) != 2:
-                error('Invalid resize argument: ', size)
+                error("Invalid resize argument:", size)
             options.resize = tuple(tokens)  # pylint: disable=redefined-variable-type
     image = run(loadImage(options.inputImage))
     processed = run(prepare(image, **vars(options))) or image

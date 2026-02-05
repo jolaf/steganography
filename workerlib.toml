@@ -21,7 +21,7 @@ sync_main_only = true
 [adapters]
 "Steganography" = [
     ["Image", "imageToJS", "imageFromJS"],
-    ["Transpose", "None", "None"],
+    ["Transpose",],
 ]
 #"None" = ["Any", "pickle", "pickle"]
 #"workerlib" = ["All", "pickle", "pickle"]
