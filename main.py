@@ -40,20 +40,6 @@ from typing import cast, Any, ClassVar, Final, TypeAlias
 from js import console, location, Blob, CSSStyleSheet, Event, Node, NodeFilter, Text, Uint8Array, URL
 from pyodide.ffi import JsNull, JsProxy  # pylint: disable=import-error, no-name-in-module
 
-# Simplifying addressing to JS functions
-newCSSStyleSheet = CSSStyleSheet.new
-del CSSStyleSheet  # Delete what we won't need anymore to make sure we really don't need it
-newUint8Array = Uint8Array.new
-del Uint8Array
-createObjectURL = URL.createObjectURL
-revokeObjectURL = URL.revokeObjectURL
-del URL
-adoptedStyleSheets = document.adoptedStyleSheets
-createTreeWalker = document.createTreeWalker
-del document
-reload = location.reload
-del location
-
 # We'll redefine these classes to `JsProxy` below, so we have to save all references we actually need
 newBlob = Blob.new
 newEvent = Event.new
@@ -156,8 +142,8 @@ async def repaint() -> None:
 
 @typechecked
 def createObjectURLFromBytes(buffer: Buffer, mimeType: str) -> str:
-    blob = newBlob([newUint8Array(buffer),], to_js({TYPE: mimeType}))  # to_js() converts Python dict into JS object
-    return createObjectURL(blob)
+    blob = newBlob([Uint8Array.new(buffer),], to_js({TYPE: mimeType}))  # to_js() converts Python dict into JS object
+    return URL.createObjectURL(blob)
 
 @typechecked
 async def blobToBytes(blob: Blob) -> bytes:
@@ -219,7 +205,7 @@ def dispatchEvent(element: str | Element, eventType: str) -> None:  # ToDo: remo
 
 @typechecked
 def iterTextNodes(root: Element | None = None) -> Iterator[Node]:
-    walker = createTreeWalker(toJsElement(root or page.html), NodeFilter.SHOW_TEXT)
+    walker = document.createTreeWalker(toJsElement(root or page.html), NodeFilter.SHOW_TEXT)
     while node := walker.nextNode():
         assert node.nodeType == TEXT_NODE, node.nodeType
         yield node
@@ -323,8 +309,8 @@ class Options(Storage):
             if isinstance(defaultValue, TagAttrValue):
                 elements[name] = self.configureElement(name, defaultValue)
 
-        self.styleSheet = newCSSStyleSheet()
-        adoptedStyleSheets.push(self.styleSheet)
+        self.styleSheet = CSSStyleSheet.new()
+        document.adoptedStyleSheets.push(self.styleSheet)
         self.updateStyle()
         self.setLanguage()
 
@@ -406,7 +392,7 @@ class Options(Storage):
                 self.updateStyle()
             await self.sync()  # Make sure the database is really updated
             if name == 'language':
-                reload()
+                location.reload()
 
         return element
 
@@ -734,7 +720,7 @@ class ImageBlock:
 
     def setURL(self, url: str = '') -> None:
         if src := self.getAttr('display', 'src'):
-            revokeObjectURL(src)
+            URL.revokeObjectURL(src)
         self.setAttr('display', 'src', url)
         self.setAttr('display-link', 'href', url)
         self.setAttr('download-link', 'href', url)
