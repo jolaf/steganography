@@ -23,21 +23,19 @@ PREFIX = "[main]"
 print(PREFIX, "Loading app")
 
 from asyncio import create_task, sleep, to_thread
-from collections.abc import Buffer, Callable, Coroutine as _Coroutine, Iterable, Iterator, Mapping, Sequence  # `beartype` needs these things in runtime
+from collections.abc import Buffer, Iterable, Iterator, Mapping, Sequence  # `beartype` needs these things in runtime
 from contextlib import suppress
 from datetime import datetime
 from enum import auto, verify, Enum, CONTINUOUS, UNIQUE
 from gettext import translation, GNUTranslations
 from html import escape
-from inspect import iscoroutinefunction, signature
+from inspect import iscoroutinefunction
 from itertools import chain
 from pathlib import Path
 from re import findall, match
 from sys import stderr  # pylint: disable=ungrouped-imports
 from time import time
-from traceback import extract_tb
-from types import TracebackType  # noqa: TC003
-from typing import cast, Any, ClassVar, Final
+from typing import cast, Any, ClassVar, Final, TypeAlias
 
 from js import console, location, Blob, CSSStyleSheet, Event, Node, NodeFilter, Text, Uint8Array, URL
 from pyodide.ffi import JsNull, JsProxy  # pylint: disable=import-error, no-name-in-module
@@ -61,16 +59,13 @@ newBlob = Blob.new
 newEvent = Event.new
 TEXT_NODE = Node.TEXT_NODE
 
-# `beartype` sees these JS types as functions and fails to typecheck calls annotated with them, as of v0.22.9
+# `beartype` fails to typecheck calls annotated with these types, as of v0.22.9
 type Blob = JsProxy  # type: ignore[no-redef]
 type Event = JsProxy  # type: ignore[no-redef]
 type Node = JsProxy  # type: ignore[no-redef]
 
-type Coroutine[T = object] = _Coroutine[None, None, T]
-type CoroutineFunction[T = object] = Callable[..., Coroutine[T]]
-type CallableOrCoroutine[T = object] = Callable[..., T | Coroutine[T]]
-
-from workerlib import connectToWorker, diagnostics, elapsedTime, fullName, improveExceptionHandling, systemVersions, typechecked, Worker
+from workerlib import connectToWorker, diagnostics, elapsedTime, exceptionHandler, fullName, improveExceptionHandling, systemVersions, typechecked, Worker
+from workerlib import _getArgNames, _Callable, _CallableOrCoroutine, P  # type: ignore[attr-defined]
 
 from numpy import __version__ as numpyVersion
 from PIL import __version__ as pilVersion
@@ -91,47 +86,49 @@ except ImportError:
 from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, OverlayOptions, Image
 from Steganography import encrypt, overlay, prepare  # For extracting options only
 
-TagAttrValue = str | int | float | bool
+TagAttrValue: TypeAlias = str | int | float | bool  # Using `type` breaks `isinstance()`  # noqa: UP040
 
 # Tag names
-A = 'A'
-BUTTON = 'BUTTON'
-DIV = 'DIV'
-HTML = 'HTML'
-INPUT = 'INPUT'
-META = 'META'
-SELECT = 'SELECT'
+A: Final[str] = 'A'
+BUTTON: Final[str] = 'BUTTON'
+DIV: Final[str] = 'DIV'
+HTML: Final[str] = 'HTML'
+INPUT: Final[str] = 'INPUT'
+META: Final[str] = 'META'
+SELECT: Final[str] = 'SELECT'
 
 # Attribute names
-AUTOCOMPLETE = 'autocomplete'
-CHECKED = 'checked'
-CONTENT = 'content'
-INPUTMODE = 'inputmode'
-LANG = 'lang'
-MAXLENGTH = 'maxlength'
-PATTERN = 'pattern'
-PLACEHOLDER = 'placeholder'
-TITLE = 'title'
-VALUE = 'value'
+AUTOCOMPLETE: Final[str] = 'autocomplete'
+CHECKED: Final[str] = 'checked'
+CONTENT: Final[str] = 'content'
+INPUTMODE: Final[str] = 'inputmode'
+LANG: Final[str] = 'lang'
+MAXLENGTH: Final[str] = 'maxlength'
+PATTERN: Final[str] = 'pattern'
+PLACEHOLDER: Final[str] = 'placeholder'
+TITLE: Final[str] = 'title'
+VALUE: Final[str] = 'value'
 
 # Special attributes
-TEXT_CONTENT = 'textContent'
-INNER_HTML = 'innerHTML'
+TEXT_CONTENT: Final[str] = 'textContent'
+INNER_HTML: Final[str] = 'innerHTML'
 
 # <INPUT> types
-TEXT = 'text'
-CHECKBOX = 'checkbox'
+TEXT: Final[str] = 'text'
+CHECKBOX: Final[str] = 'checkbox'
 
 # Event names
-CLICK = 'click'
-CHANGE = 'change'
+CLICK: Final[str] = 'click'
+CHANGE: Final[str] = 'change'
 
 # Class names
-HIDDEN = 'hidden'
-TYPE = 'type'
+HIDDEN: Final[str] = 'hidden'
+TYPE: Final[str] = 'type'
 
 # Misc
-GETTEXT_TEST = 'GETTEXT_TEST'
+GETTEXT_TEST: Final[str] = 'GETTEXT_TEST'
+
+EXCEPTION_NOTE: Final[str] = "Please make a screenshot and report it to @jolaf at Telegram or VK or to vmzakhar@gmail.com. Thank you!"
 
 @typechecked
 def _(s: str) -> str:  # Will be replaced by gettext
@@ -142,10 +139,11 @@ def toJsElement(element: Element | JsProxy) -> JsProxy:
     return getattr(element, '_dom_element', element)  # type: ignore[arg-type]
 
 @typechecked
-def log(*args: Any, showToUser: bool = True) -> None:
+def log(*args: object, isError: bool | None = None, showToUser: bool = True) -> None:
     message = ' '.join(str(arg) for arg in args)
-    isError = any(word in message.upper() for word in ('ERROR', 'EXCEPTION'))
-    print(PREFIX, message, file = stderr if isError else None, flush = True)
+    if isError is None:
+        isError = any(word in message.upper() for word in ('ERROR', 'EXCEPTION'))
+    print(PREFIX, message, flush = True, file = stderr if isError else None)
     if showToUser:
         logElement = getElementByID('log')
         logElement.append(f"{datetime.now().astimezone().strftime('%H:%M:%S')} {PREFIX} {message}\n")
@@ -520,7 +518,7 @@ class ImageBlock:
         Stage.KEY: './images/key.png',
     }
 
-    PROCESS_OPTIONS: ClassVar[Mapping[Callable[..., Any], Sequence[str]]] = {}
+    PROCESS_OPTIONS: ClassVar[Mapping[_Callable, Sequence[str]]] = {}
 
     imageBlocks: Final[dict[Stage, ImageBlock]] = {}
 
@@ -528,8 +526,8 @@ class ImageBlock:
     worker: ClassVar[Worker | None] = None
 
     @classmethod
-    def extractOptions(cls, func: Callable[..., Any]) -> Sequence[str]:
-        return tuple(name for (name, param) in signature(func).parameters.items() if param.kind == param.KEYWORD_ONLY)
+    def extractOptions(cls, func: _Callable) -> Sequence[str]:
+        return tuple(_getArgNames(func, P.KEYWORD_ONLY))
 
     @classmethod
     async def init(cls) -> None:
@@ -558,7 +556,7 @@ class ImageBlock:
     @classmethod
     async def process(cls,
                       targetStages: Stage | Iterable[Stage],
-                      processFunction: CallableOrCoroutine[Image | tuple[Image, Image, OverlayOptions | None]],
+                      processFunction: _CallableOrCoroutine[Image | tuple[Image, Image] | tuple[Image, Image, OverlayOptions]],
                       sourceStages: Stage | Iterable[Stage],
                       *,
                       optionalSourceStages: Stage | Iterable[Stage] | None = None,
@@ -742,14 +740,16 @@ class ImageBlock:
         self.setAttr('download-link', 'href', url)
 
     def setDescription(self, message: str, isError: bool = False) -> None:
-        self.setAttr('description', INNER_HTML if isError else TEXT_CONTENT, message)
+        self.setAttr('description', INNER_HTML if isError else TEXT_CONTENT,
+                     f"<pre>{escape(message)}</pre>" if isError else message)
         self.show('description')
 
     def error(self, message: str, exception: BaseException | None = None) -> None:
-        self.setDescription(f"{_("ERROR")} {message}{f": <pre>{escape(str(exception))}</pre>" if exception else ''}", isError = True)
-        self.hide('remove')  # ToDo: Should we really print stack here? Or just say "Press F12 to check console"? And what about phones?
+        self.setDescription(f"{_("ERROR")} {message}{f": {exception}" if exception else ''}", isError = True)
+        self.hide('remove')  # ToDo: Should we really print stack here? Or just a message?
         if exception:
-            exceptionHandler("Exception at image processing", exception = exception, showToUser = False)
+            exceptionHandler("Exception at image processing", exception = exception, suffix = EXCEPTION_NOTE,
+                             displayFunction = log, isError = True, showToUser = False)
 
     def clean(self, description: str | None = None) -> None:
         self.setURL()
@@ -858,30 +858,9 @@ class ImageBlock:
         await self.pipeline()
 
 @typechecked
-def exceptionHandler(problem: str,
-                     exceptionType: type[BaseException | None] | None = None,
-                     exception: BaseException | None = None,
-                     traceback: TracebackType | None = None,
-                     *,
-                     showToUser: bool = True,
-                     ) -> None:
-    if exceptionType is None:
-        exceptionType = type(exception)
-    if traceback is None and exception:
-        traceback = exception.__traceback__
-    # Filter the traceback to remove empty lines:
-    tracebackStr = '\n====== Traceback:\n' + '\n'.join(line for line in '\n'.join(extract_tb(traceback).format()).splitlines() if line.strip()) if traceback else ''
-    log(f"""
-{PREFIX} ERROR: {problem}, type {fullName(exceptionType)}:
-{exception}{tracebackStr}
-
-Please make a screenshot and report it to @jolaf at Telegram or VK or to vmzakhar@gmail.com. Thank you!
-""", showToUser = showToUser)
-
-@typechecked
 async def main() -> None:
     log("Starting app")
-    improveExceptionHandling(log)
+    improveExceptionHandling(EXCEPTION_NOTE, log, isError = True)
 
     for info in diagnostics:
         log(info)
