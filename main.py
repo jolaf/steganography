@@ -131,7 +131,7 @@ def log(*args: object, isError: bool | None = None, showToUser: bool = True) -> 
         isError = any(word in message.upper() for word in ('ERROR', 'EXCEPTION'))
     print(PREFIX, message, flush = True, file = stderr if isError else None)
     if showToUser:
-        logElement = getElementByID('log')
+        logElement = page['log']
         logElement.append(f"{datetime.now().astimezone().strftime('%H:%M:%S')} {PREFIX} {message}\n")
         if isError:
             logElement.classes.add('error')
@@ -150,26 +150,22 @@ async def blobToBytes(blob: Blob) -> bytes:
     return (await blob.arrayBuffer()).to_bytes()
 
 @typechecked
-def getElementByID(elementID: str) -> Element:  # ToDo: Replace with page[id]
-    return page[elementID]
-
-@typechecked
 def hide(element: str | Element) -> None:
     if isinstance(element, str):
-        element = getElementByID(element)
+        element = page[element]
     element.classes.add(HIDDEN)
 
 @typechecked
 def show(element: str | Element) -> None:
     if isinstance(element, str):
-        element = getElementByID(element)
+        element = page[element]
     if HIDDEN in element.classes:
         element.classes.remove(HIDDEN)
 
 @typechecked
 def getAttr(element: str | Element, attr: str, default: str | None = None) -> str | None:
     if isinstance(element, str):
-        element = getElementByID(element)
+        element = page[element]
     assert isinstance(element, Element), type(element)
     ret = getattr(element, attr) if attr in (TEXT_CONTENT, INNER_HTML) else element.getAttribute(attr)
     return default if ret is None or isinstance(ret, JsNull) else ret
@@ -177,7 +173,7 @@ def getAttr(element: str | Element, attr: str, default: str | None = None) -> st
 @typechecked
 def setAttr(element: str | Element, attr: str, value: TagAttrValue, onlyIfAbsent: bool = False) -> None:
     if isinstance(element, str):
-        element = getElementByID(element)
+        element = page[element]
     if attr in (TEXT_CONTENT, INNER_HTML):
         if not onlyIfAbsent or not getattr(element, attr):
             assert isinstance(value, str), type(value)
@@ -188,7 +184,7 @@ def setAttr(element: str | Element, attr: str, value: TagAttrValue, onlyIfAbsent
 @typechecked
 def resetInput(element: str | Element) -> None:
     if isinstance(element, str):
-        element = getElementByID(element)
+        element = page[element]
     if element.tagName != INPUT:
         return
     if element.type == CHECKBOX:
@@ -200,7 +196,7 @@ def resetInput(element: str | Element) -> None:
 @typechecked
 def dispatchEvent(element: str | Element, eventType: str) -> None:  # ToDo: remove it when everything is working
     if isinstance(element, str):
-        element = getElementByID(element)
+        element = page[element]
     element.dispatchEvent(newEvent(eventType))
 
 @typechecked
@@ -267,7 +263,7 @@ class Options(Storage):
 
     @classmethod
     def setLanguage(cls) -> None:
-        language = getElementByID('option-language').value
+        language = page['option-language'].value
         # noinspection PyGlobalUndefined
         global _  # noqa: PLW0603  # pylint: disable=global-statement
         _ = (tr := cls.TRANSLATIONS[language]).gettext  # type: ignore[assignment]
@@ -314,7 +310,7 @@ class Options(Storage):
         self.updateStyle()
         self.setLanguage()
 
-        @when(CLICK, getElementByID('options-reset'))
+        @when(CLICK, page['options-reset'])
         @typechecked
         async def resetEventHandler(_e: Event) -> None:
             for (name, element) in elements.items():
@@ -330,7 +326,7 @@ class Options(Storage):
         value = self.get(name, defaultValue)  # Read from the database
         assert isinstance(value, valueType), f"Incorrect type for option {name}: {type(value)}, expected {valueType}"
         elementID = '-'.join(chain(('option',), (word.lower() for word in findall(r'[a-z]+|[A-Z][a-z]*|[A-Z]+', name))))
-        element = getElementByID(elementID)
+        element = page[elementID]
         if name == 'language':  # <SELECT>
             assert element.tagName == SELECT, element.tagName
             assert valueType is str, valueType
@@ -522,7 +518,7 @@ class ImageBlock:
         cls.PROCESS_OPTIONS = {func: cls.extractOptions(func) for func in (encrypt, overlay, prepare)}
         for stage in Stage:
             cls.imageBlocks[stage] = ImageBlock(stage)
-        getElementByID('template').remove()
+        page['template'].remove()
         for (stage, block) in cls.imageBlocks.items():
             block.source = cls.imageBlocks.get(cls.SOURCES.get(stage))  # type: ignore[arg-type]
         cls.worker = await connectToWorker()
@@ -640,9 +636,9 @@ class ImageBlock:
         self.dirty = False
 
         # Create DOM element
-        block = getElementByID('template').clone(self.getElementID('block'))
+        block = page['template'].clone(self.getElementID('block'))
         targetID = 'uploaded' if self.isUpload else 'processed' if self.isProcessed else 'generated'
-        getElementByID(targetID).append(block)
+        page[targetID].append(block)
 
         # Assign named IDs to all children that have image-* classes
         for element in block.find('*'):
@@ -696,7 +692,7 @@ class ImageBlock:
         return f'{self.ID_PREFIX}{detail}-{self.name}'
 
     def getElement(self, detail: str) -> Element:
-        return getElementByID(self.getElementID(detail))
+        return page[self.getElementID(detail)]
 
     def hide(self, name: str) -> None:
         hide(self.getElement(name))
