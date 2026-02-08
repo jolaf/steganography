@@ -488,8 +488,8 @@ async def encrypt(source: Image,  # noqa: C901
 
         for ((y, x), s) in np.ndenumerate(sourceArray):
             if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
-                if time() - startTime > 10:
-                    log(f"Encrypting… y={y}")
+                if time() - startTime > 1:
+                    log(f"Encrypting… {y * 100 // source.height}%")
                     startTime = time()
                 await sleep(0)
 
@@ -508,8 +508,8 @@ async def encrypt(source: Image,  # noqa: C901
         for lockY in range(0, lockHeight, N):
             for lockX in range(0, lockWidth, N):
                 if lockX == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
-                    if time() - startTime > 10:
-                        log(f"Encrypting… y={lockY // N}")  # ToDo: Replace with percent
+                    if time() - startTime > 1:
+                        log(f"Encrypting… {lockY * 100 // lockHeight}%")
                         startTime = time()
                     await sleep(0)
 
@@ -530,8 +530,8 @@ async def encrypt(source: Image,  # noqa: C901
 
         for ((y, x), s) in np.ndenumerate(sourceArray):
             if x == 0:  # pylint: disable=use-implicit-booleaness-not-comparison-to-zero
-                if time() - startTime > 10:
-                    log(f"Encrypting… y={y}")
+                if time() - startTime > 1:
+                    log(f"Encrypting… {y * 100 // source.height}%")
                     startTime = time()
                 await sleep(0)
 
