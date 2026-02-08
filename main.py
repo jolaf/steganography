@@ -435,7 +435,7 @@ class Options(Storage):
             return ret
         ret = {}
         for option in options:
-            if (value := self.get(option)) and value != super().__getattribute__(option):  # ToDo: Maybe instead of this hack we should have proper Option class, encapsulating type, default value, actual value and Element reference
+            if (value := self.get(option)) and value != super().__getattribute__(option):  # ToDo: Maybe instead of this hack we should have a proper `Option` class encapsulating type, default value, actual value and `Element` reference
                 ret[option] = value  # Only fill options with non-default values
         return ret
 
@@ -566,9 +566,11 @@ class ImageBlock:
             log(f"Processing {', '.join(source.stage.name for source in chain(sources, optionalSources))} => {', '.join(target.stage.name for target in targets)}")
             startTime = time()
             if iscoroutinefunction(processFunction) or isinstance(processFunction, JsProxy):  # pylint: disable=consider-ternary-expression
+                # vv WORKER CALL vv
                 ret = await processFunction(*sourceImages, **options)
             else:
                 ret = await to_thread(processFunction, *sourceImages, **options)
+                # ^^ WORKER CALL ^^
             log(f"Completed processing {elapsedTime(startTime)}")
             if ret is None:  # No changes were made, use original image
                 assert len(sourceImages) == 1 and sourceImages[0], sourceImages  # noqa: PT018
@@ -727,8 +729,8 @@ class ImageBlock:
         self.show('description')
 
     def error(self, message: str, exception: BaseException | None = None) -> None:
-        self.setDescription(f"{_("ERROR")} {message}{f": {exception}" if exception else ''}", isError = True)
-        self.hide('remove')  # ToDo: Should we really print stack here? Or just a message?
+        self.setDescription(f"{_("ERROR")} {message}{f":\n{exception}" if exception else ''}\n{EXCEPTION_NOTE}", isError = True)
+        self.hide('remove')
         if exception:
             exceptionHandler("Exception at image processing", exception = exception, suffix = EXCEPTION_NOTE,
                              displayFunction = log, isError = True, showToUser = False)
