@@ -32,8 +32,11 @@ def getOccurrences(fileName: str, msgid: str) -> Iterator[Occurrence]:
 
 @typechecked
 def main() -> None:
-    poFileName = './gettext/ru.po'
-    po = pofile(poFileName, wrapwidth = 999, encoding = 'utf-8', check_for_duplicates = True)
+    poFileName = 'ru.po'
+    poFilePath = Path(__file__).parent / poFileName
+    with poFilePath.open() as f:
+        poData = f.read()
+    po = pofile(poData, wrapwidth = 999, encoding = 'utf-8', check_for_duplicates = True)
 
     for entry in po:
         fileNames = tuple(sorted({occurrence[0] for occurrence in entry.occurrences}))
@@ -49,8 +52,8 @@ def main() -> None:
     for entry in sorted(po, key = lambda entry: (entry.occurrences[0][0], int(entry.occurrences[0][1]))):
         newPO.append(entry)
 
-    newPO.save(poFileName)
-    newPO.save_as_mofile(poFileName.replace('.po', '.mo'))
+    newPO.save(poFilePath)
+    newPO.save_as_mofile(str(poFilePath).replace('.po', '.mo'))
 
 if __name__ == '__main__':
     main()

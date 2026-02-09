@@ -78,8 +78,8 @@ msgid "Resize lock to"
 msgstr "Масштабировать замок в"
 
 #: index.html:93
-msgid "specify one value only; smaller image would be placed in larger one randomly"
-msgstr "указывайте только одно из значений; меньшее изображение будет размещено внутри бо́льшего в случайном месте"
+msgid "specify one value only; key position inside lock would be chosen randomly"
+msgstr "указывайте только одно из значений; ключ будет размещён внутри замка случайным образом"
 
 #: index.html:96
 msgid "Random key rotation"
@@ -125,10 +125,6 @@ msgstr "Нажмите, чтобы загрузить изображение д�
 msgid "Upload"
 msgstr "Загрузить"
 
-#: index.html:122
-msgid "Click for full screen preview"
-msgstr "Нажмите, чтобы открыть изображение в новой вкладке"
-
 #: index.html:123
 msgid "preview"
 msgstr "просмотр"
@@ -149,15 +145,15 @@ msgstr "Василий Захаров"
 msgid "Victor Kurush"
 msgstr "Виктор Куруш"
 
-#: main.py:220
+#: main.py:222
 msgid "integer"
 msgstr "целое"
 
-#: main.py:227
+#: main.py:229
 msgid "float"
 msgstr "десятичное"
 
-#: main.py:268
+#: main.py:270
 msgid "GETTEXT_TEST"
 msgstr "GETTEXT_TEST_ru_RU"
 
@@ -165,62 +161,62 @@ msgstr "GETTEXT_TEST_ru_RU"
 msgid "Do not use"
 msgstr "Не используйте"
 
-#: main.py:479
+#: main.py:481
 msgid "Source image"
 msgstr "Исходный рисунок"
 
-#: main.py:480
+#: main.py:482
 msgid "Lock mask"
 msgstr "Маска замка́"
 
-#: main.py:481
+#: main.py:483
 msgid "Key mask"
 msgstr "Маска ключа"
 
-#: main.py:482
+#: main.py:484
 msgid "Processed source"
 msgstr "Обработанный исходник"
 
-#: main.py:483
+#: main.py:485
 msgid "Processed lock mask"
 msgstr "Обработанная МЗ"
 
-#: main.py:484
+#: main.py:486
 msgid "Processed key mask"
 msgstr "Обработанная МК"
 
-#: main.py:485
+#: main.py:487
 msgid "Generated lock"
 msgstr "Готовый замо́к"
 
-#: main.py:486
+#: main.py:488
 msgid "Generated key"
 msgstr "Готовый ключ"
 
-#: main.py:487
+#: main.py:489
 msgid "Overlay test"
 msgstr "Тест наложения"
 
-#: main.py:561
+#: main.py:560
 msgid "Processing image"
 msgstr "Обработка изображения"
 
-#: main.py:589
+#: main.py:590
 msgid "processing image"
 msgstr "обработки изображения"
 
-#: main.py:729
+#: main.py:732
 msgid "ERROR"
 msgstr "ОШИБКА"
 
-#: main.py:761
+#: main.py:765
 msgid "bytes"
 msgstr "байт"
 
-#: main.py:801 main.py:831
+#: main.py:805 main.py:835
 msgid "loading image"
 msgstr "загрузки изображения"
 
-#: main.py:822
+#: main.py:826
 msgid "Loading image"
 msgstr "Загрузка изображения"

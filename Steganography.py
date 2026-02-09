@@ -437,11 +437,11 @@ async def encrypt(source: Image,  # noqa: C901
 
         N = 2  # pylint: disable=redefined-outer-name
         (lockWidth, lockHeight) = lockSize = (lockWidth * N, lockHeight * N)
-        (keyWidth, keyHeight) = _keySize = (source.width * N, source.height * N)
+        (_keyWidth, _keyHeight) = keySize = (source.width * N, source.height * N)
 
         # PIL/NumPy array indexes are `y` first, `x` second
-        lockArray = np.empty((lockHeight, lockWidth), bool)  # These arrays are write-only, so we don't care about the initial values.
-        keyArray = np.empty((keyHeight, keyWidth), bool)   # Also, creating empty arrays is faster than filling with 1's or 0's.
+        lockArray = np.empty(lockSize, bool)  # These arrays are write-only, so we don't care about the initial values.
+        keyArray = np.empty(keySize, bool)   # Also, creating empty arrays is faster than filling with 1's or 0's.
         # Also, empty arrays produce a recognizable visual pattern in images, and that allows to notice
         # if some part of the image was not written to, as it should be.
 
