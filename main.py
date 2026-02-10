@@ -424,19 +424,20 @@ class Options(Storage):
             del self[f'file-{name}-fileName']
         await self.sync()
 
-    def fillOptions(self, options: Iterable[str] | Mapping[str, Any] | None) -> Mapping[str, Any]:
-        if not options:
-            return {}
+    def fillOptions(self, options: Iterable[str] | Mapping[str, Any] | None, **kwargs: object) -> Mapping[str, Any]:
+        ret: dict[str, object]
         if isinstance(options, Mapping):
             ret = dict(options)
             for (option, value) in options.items():
                 if value is None and (value := self.get(option)) and value != super().__getattribute__(option):
-                    ret[option] = value  # noqa: PERF403
-            return ret
-        ret = {}
-        for option in options:
-            if (value := self.get(option)) and value != super().__getattribute__(option):  # ToDo: Maybe instead of this hack we should have a proper `Option` class encapsulating type, default value, actual value and `Element` reference
-                ret[option] = value  # Only fill options with non-default values
+                    ret[option] = value
+        else:
+            ret = {}
+            for option in options or ():
+                if (value := self.get(option)) and value != super().__getattribute__(option):  # ToDo: Maybe instead of this hack we should have a proper `Option` class encapsulating type, default value, actual value and `Element` reference
+                    ret[option] = value  # Only fill options with non-default values
+        for (option, value) in kwargs.items():
+            ret[option] = value
         return ret
 
     def __getattribute__(self, name: str) -> Any:
@@ -611,11 +612,12 @@ class ImageBlock:
             ret = await cls.process(Stage.PROCESSED_KEY,
                                     cls.worker.prepare, Stage.KEY,  # type: ignore[attr-defined]
                                     options = {'resizeWidth': keyWidth, 'resizeHeight': keyHeight, 'dither': None})
+            options: Mapping[str, Any] | Sequence[str]
+            options = cls.options.fillOptions(cls.PROCESS_OPTIONS[encrypt], lockWidth = lockWidth, lockHeight = lockHeight)
             ret = await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
                                     cls.worker.encrypt, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
                                     optionalSourceStages = (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
-                                    options = cls.PROCESS_OPTIONS[encrypt])
-            options: dict[str, Any] | Sequence[str]
+                                    options = options)
             if ret:
                 assert isinstance(ret, Mapping), type(ret)
                 options = dict.fromkeys(cls.PROCESS_OPTIONS[overlay])

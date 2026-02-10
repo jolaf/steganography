@@ -353,34 +353,44 @@ async def prepare(image: Image,
     return finalize(processed)
 
 @typechecked
-def getLockSize(sourceSize: tuple[int, int],
+def getLockSize(keySize: tuple[int, int],
                 lockFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
                 lockWidth: int | None = None,
                 lockHeight: int | None = None,
                 ) -> tuple[int, int]:
-    (sourceWidth, sourceHeight) = sourceSize
+    (keyWidth, keyHeight) = keySize
+    if lockFactor is not None and (not isinstance(lockFactor, float | int) or lockFactor < 1):
+        raise ValueError(f"Bad `lockFactor` {lockFactor}, must be an `int` or a `float`, no less than 1")
+    if lockWidth and (not isinstance(lockWidth, int) or lockWidth < keyWidth):
+        raise ValueError(f"Bad `lockWidth` {lockWidth}, must be an `int` no less than key width ({keyWidth})")
+    if lockHeight and (not isinstance(lockHeight, int) or lockHeight < keyHeight):
+        raise ValueError(f"Bad `lockHeight` {lockHeight}, must be an `int` no less than key height ({keyHeight})")
+    if lockFactor and lockFactor != 1 and (lockWidth or lockHeight):
+        raise ValueError("Either `lockFactor` or `lockWidth`/`lockHeight` can be specified")
+
+    (keyWidth, keyHeight) = keySize
     if lockFactor and lockFactor != 1:
-        lockSize = (round(sourceWidth * lockFactor),
-                    round(sourceHeight * lockFactor))
+        lockSize = (round(keyWidth * lockFactor),
+                    round(keyHeight * lockFactor))
     elif lockWidth or lockHeight:
         if not lockHeight:
             assert lockWidth
-            lockWidth = max(lockWidth, sourceWidth)
-            if sourceWidth == sourceHeight:  # noqa: SIM108
+            lockWidth = max(lockWidth, keyWidth)
+            if keyWidth == keyHeight:  # noqa: SIM108
                 lockSize = (lockWidth, lockWidth)
             else:
-                lockSize = (lockWidth, round(sourceHeight * lockWidth / sourceWidth))
+                lockSize = (lockWidth, round(keyHeight * lockWidth / keyWidth))
         elif not lockWidth:
             assert lockHeight
-            lockHeight = max(lockHeight, sourceHeight)
-            if sourceWidth == sourceHeight:  # noqa: SIM108
+            lockHeight = max(lockHeight, keyHeight)
+            if keyWidth == keyHeight:  # noqa: SIM108
                 lockSize = (lockHeight, lockHeight)
             else:
-                lockSize = (round(sourceWidth * lockHeight / sourceHeight), lockHeight)
+                lockSize = (round(keyWidth * lockHeight / keyHeight), lockHeight)
         else:
-            lockSize = (max(lockWidth, sourceWidth), max(lockHeight, sourceHeight))
+            lockSize = (max(lockWidth, keyWidth), max(lockHeight, keyHeight))
     else:
-        lockSize = sourceSize
+        lockSize = keySize
     return lockSize
 
 @typechecked
@@ -388,7 +398,6 @@ async def encrypt(source: Image,  # noqa: C901
                   lockMask: Image | None = None,
                   keyMask: Image | None = None,
                   *,
-                  lockFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
                   lockWidth: int | None = None,
                   lockHeight: int | None = None,
                   randomRotate: bool | None = None,
@@ -400,18 +409,12 @@ async def encrypt(source: Image,  # noqa: C901
     If `lockMask` and/or `keyMask` are provided,
     they are used as visible hints on the corresponding output images.
     """
-    if lockFactor is not None and (not isinstance(lockFactor, float | int) or lockFactor < 1):
-        raise ValueError(f"Bad lockFactor {lockFactor}, must be an int or a float no less than 1")
-    if lockWidth is not None and (not isinstance(lockWidth, int) or lockWidth < source.width):
-        raise ValueError(f"Bad lockWidth {lockWidth}, must be a positive int at least equal to source.width ({source.width})")
-    if lockHeight is not None and (not isinstance(lockHeight, int) or lockHeight < source.height):
-        raise ValueError(f"Bad lockHeight {lockHeight}, must be a positive int at least equal to source.height ({source.height})")
-    if lockFactor and (lockWidth or lockHeight):
-        raise ValueError("Either lockFactor or lockWidth/lockHeight can be specified")
-
-    assert source.mode == BW1, source.mode  # ToDo: ValueError
-    assert lockMask is None or lockMask.mode == BW1, lockMask.mode
-    assert keyMask is None or keyMask.mode == BW1, keyMask.mode
+    if source.mode != BW1:
+        raise ValueError(f"Bad `source` image mode {source.mode!r}, must be {BW1!r}")
+    if lockMask and lockMask.mode != BW1:
+        raise ValueError(f"Bad `lockMask` image mode {lockMask.mode!r}, must be {BW1!r}")
+    if keyMask and keyMask.mode != BW1:
+        raise ValueError(f"Bad `keyMask` image mode {keyMask.mode!r}, must be {BW1!r}")
 
     startTime = time()
 
@@ -425,8 +428,16 @@ async def encrypt(source: Image,  # noqa: C901
         rotateMethod = None
     flip: bool = bool(randomFlip) and choice((False, True))
 
-    # ToDo: Remove this call, used passed `(lockWidth, lockHeight)` as is instead
-    (lockWidth, lockHeight) = lockSize = getLockSize(source.size, lockFactor, lockWidth, lockHeight)
+    if lockWidth is not None and (not isinstance(lockWidth, int) or lockWidth < source.width):
+        raise ValueError(f"Bad `lockWidth` {lockWidth}, must be an `int` no less than `source.width` ({source.width}), or both `source` dimensions {source.size} if `randomRotate` is `True`")
+    if lockHeight is not None and (not isinstance(lockHeight, int) or lockHeight < source.height):
+        raise ValueError(f"Bad `lockHeight` {lockHeight}, must be an `int` no less than `source.height` ({source.height}), or both `source` dimensions {source.size} if `randomRotate` is `True`")
+
+    if not lockWidth:
+        lockWidth = source.width
+    if not lockHeight:
+        lockHeight = source.height
+    lockSize = (lockWidth, lockHeight)
 
     dw = lockWidth - source.width
     dh = lockHeight - source.height
@@ -654,6 +665,7 @@ else:
         'Transpose',
         'encrypt',
         'getImageMode',
+        'getLockSize',
         'getMimeTypeFromImage',
         'imageFromJS',
         'imageToBytes',
