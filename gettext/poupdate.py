@@ -52,7 +52,7 @@ def main() -> None:
     for entry in sorted(po, key = lambda entry: (entry.occurrences[0][0], int(entry.occurrences[0][1]))):
         newPO.append(entry)
 
-    newPO.save(poFilePath)
+    newPO.save(poFilePath)  # type: ignore[arg-type]
     newPO.save_as_mofile(str(poFilePath).replace('.po', '.mo'))
 
 if __name__ == '__main__':

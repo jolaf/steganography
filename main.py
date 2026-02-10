@@ -69,7 +69,7 @@ except ImportError:
     def getDefaultTaskName() -> str:
         return "steganography"
 
-from Steganography import getImageMode, getMimeTypeFromImage, imageToBytes, loadImage, OverlayOptions, Image
+from Steganography import getImageMode, getLockSize, getMimeTypeFromImage, imageToBytes, loadImage, OverlayOptions, Image
 from Steganography import encrypt, overlay, prepare  # For extracting options only
 
 TagAttrValue: TypeAlias = str | int | float | bool  # Using `type` breaks `isinstance()`  # noqa: UP040
@@ -601,26 +601,31 @@ class ImageBlock:
         ret = await cls.process(Stage.PROCESSED_SOURCE,
                                 cls.worker.prepare, Stage.SOURCE,  # type: ignore[attr-defined]
                                 options = cls.PROCESS_OPTIONS[prepare])
-        ret = await cls.process(Stage.PROCESSED_LOCK,
-                                cls.worker.prepare, Stage.LOCK,  # type: ignore[attr-defined]
-                                options = {'dither': None})
-        ret = await cls.process(Stage.PROCESSED_KEY,
-                                cls.worker.prepare, Stage.KEY,  # type: ignore[attr-defined]
-                                options = {'dither': None})
-        ret = await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
-                                cls.worker.encrypt, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
-                                optionalSourceStages = (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
-                                options = cls.PROCESS_OPTIONS[encrypt])
-        options: dict[str, Any] | Sequence[str]
-        if ret:
-            assert isinstance(ret, Mapping), type(ret)
-            options = dict.fromkeys(cls.PROCESS_OPTIONS[overlay])
-            options.update(ret)
-        else:
-            options = cls.PROCESS_OPTIONS[overlay]
-        ret = await cls.process(Stage.KEY_OVER_LOCK_TEST,
-                                cls.worker.overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),  # type: ignore[attr-defined]
-                                options = options)
+        if processedSourceImage := cls.imageBlocks[Stage.PROCESSED_SOURCE].image:
+            assert cls.options
+            (keyWidth, keyHeight) = (m := max(processedSourceImage.size), m) if cls.options.randomRotate else processedSourceImage.size
+            (lockWidth, lockHeight) = getLockSize((keyWidth, keyHeight), cls.options.lockFactor, cls.options.lockWidth, cls.options.lockHeight)
+            ret = await cls.process(Stage.PROCESSED_LOCK,
+                                    cls.worker.prepare, Stage.LOCK,  # type: ignore[attr-defined]
+                                    options = {'resizeWidth': lockWidth, 'resizeHeight': lockHeight, 'dither': None})
+            ret = await cls.process(Stage.PROCESSED_KEY,
+                                    cls.worker.prepare, Stage.KEY,  # type: ignore[attr-defined]
+                                    options = {'resizeWidth': keyWidth, 'resizeHeight': keyHeight, 'dither': None})
+            ret = await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
+                                    cls.worker.encrypt, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
+                                    optionalSourceStages = (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
+                                    options = cls.PROCESS_OPTIONS[encrypt])
+            options: dict[str, Any] | Sequence[str]
+            if ret:
+                assert isinstance(ret, Mapping), type(ret)
+                options = dict.fromkeys(cls.PROCESS_OPTIONS[overlay])
+                options.update(ret)
+            else:
+                options = cls.PROCESS_OPTIONS[overlay]
+            ret = await cls.process(Stage.KEY_OVER_LOCK_TEST,
+                                    cls.worker.overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),  # type: ignore[attr-defined]
+                                    options = options)
+
         for imageBlock in cls.imageBlocks.values():
             imageBlock.dirty = False
 
