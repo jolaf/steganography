@@ -320,7 +320,8 @@ async def prepare(image: Image,
                   resizeFactor: float | int | None = None,  # noqa: PYI041  # beartype is right enforcing this: https://github.com/beartype/beartype/issues/66
                   resizeWidth: int | None = None,
                   resizeHeight: int | None = None,
-                  dither: bool | None = None) -> Image | None:
+                  dither: bool | None = None,
+                  ) -> Image | None:
     """
     Converts the arbitrary `Image` to 1-bit B&W with Alpha format,
     performing additional modifications during the process.
@@ -392,7 +393,8 @@ async def encrypt(source: Image,  # noqa: C901
                   lockHeight: int | None = None,
                   randomRotate: bool | None = None,
                   randomFlip: bool | None = None,
-                  smooth: bool | None = None) -> tuple[Image, Image] | tuple[Image, Image, OverlayOptions]:
+                  smooth: bool | None = None,
+                  ) -> tuple[Image, Image] | tuple[Image, Image, OverlayOptions]:
     """
     Generates lock and key images from the specified source `Image`.
     If `lockMask` and/or `keyMask` are provided,
@@ -578,7 +580,13 @@ async def encrypt(source: Image,  # noqa: C901
     return (lockImage, keyImage, extra) if extra else (lockImage, keyImage)  # `rotateMethod` says what to do with the key for decryption; flip after rotate!
 
 @typechecked
-async def overlay(lockImage: Image, keyImage: Image, *, position: tuple[int, int] | None = None, rotate: Transpose | None = None, flip: bool | None = None) -> Image:
+async def overlay(lockImage: Image,
+                  keyImage: Image,
+                  *,
+                  position: tuple[int, int] | None = None,
+                  rotate: Transpose | None = None,
+                  flip: bool | None = None,
+                  ) -> Image:
     """
     Emulates precise overlaying of two 1-bit images one on top of the other,
     as if they were printed on transparent film.
