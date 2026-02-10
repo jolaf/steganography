@@ -612,23 +612,29 @@ async def overlay(lockImage: Image,
     Emulates precise overlaying of two 1-bit images one on top of the other,
     as if they were printed on transparent film.
     """
-    assert lockImage.mode == BW1, lockImage.mode  # ToDo: replace these asserts with proper ValueError checks
-    assert keyImage.mode == BW1, keyImage.mode
+    if lockImage.mode != BW1:
+        raise ValueError(f"Bad `lockImage` image mode {lockImage.mode!r}, must be {BW1!r}")
+    if keyImage.mode != BW1:
+        raise ValueError(f"Bad `keyImage` image mode {keyImage.mode!r}, must be {BW1!r}")
 
-    assert lockImage.width >= keyImage.width, (lockImage.size, keyImage.size)
-    assert lockImage.height >= keyImage.height, (lockImage.size, keyImage.size)
+    if rotate is not None and keyImage.width != keyImage.height:
+        raise ValueError(f"`Bad `keyImage` size {keyImage.size}, when `rotate` is set, `keyImage` must be square")
+
+    if lockImage.width < keyImage.width or lockImage.height < keyImage.height:
+        raise ValueError(f"Bad image sizes, `lockImage`: {lockImage.size}, `keyImage`: {keyImage.size}, `lockImage` must be no less than `keyImage` on both dimensions")
 
     (posX, posY) = position or (0, 0)
-    assert posX >= 0, position
-    assert posY >= 0, position
+
+    if posX < 0 or posY < 0:
+        raise ValueError(f"Bad `position`: {position}, must be non-negative on both dimensions")
+
+    if lockImage.width < keyImage.width + posX or lockImage.height < keyImage.height + posY:
+        raise ValueError(f"Bad image sizes and position, `lockImage`: {lockImage.size}, `keyImage`: {keyImage.size}, `position`: {position}, `keyImage` in this position doesn't fit into `lockImage`")
 
     if rotate is not None:
         keyImage = await timeToThread(keyImage.transpose, rotate)
     if flip:
         keyImage = await timeToThread(keyImage.transpose, FLIP)
-
-    assert keyImage.width + posX <= lockImage.width, (keyImage.size, position, lockImage.size)
-    assert keyImage.height + posY <= lockImage.height, (keyImage.size, position, lockImage.size)
 
     if lockImage.size != keyImage.size:
         newKeyImage = imageNew(BW1, lockImage.size, 1)  # white/transparent background
