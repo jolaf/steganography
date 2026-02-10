@@ -6,7 +6,7 @@ if version_info < (3, 12):  # noqa: UP036
     raise RuntimeError("This module requires Python 3.12+")
 
 from argparse import ArgumentParser
-from asyncio import run, sleep, to_thread
+from asyncio import gather, run, sleep, to_thread
 from collections.abc import Buffer, Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from io import BytesIO
@@ -465,29 +465,39 @@ async def encrypt(source: Image,  # noqa: C901
 
     if lockMask or keyMask:
 
-        if lockMask:
-            if lockMask.size != lockSize:
-                assert lockMask.width <= lockWidth and lockMask.height <= lockHeight, (lockSize, lockMask.size)  # noqa: PT018
-                assert lockMask.width == lockWidth or  lockMask.height == lockHeight, (lockSize, lockMask.size)  # Make sure it would be just padding, because resizing 1-bit images is bad idea
-                lockMask = await timeToThread(imagePad, lockMask, lockSize, RESAMPLING, color = 255)  # White background in grayscale
-        else:
-            lockMask = imageNew(BW1, lockSize, 1)  # white/transparent background
-        assert lockMask.mode == BW1, lockMask.mode
-        lockMaskArray = np.asarray(lockMask, bool)
+        @typechecked
+        async def getLockMaskArray() -> np.ndarray:
+            nonlocal lockMask
+            if lockMask:
+                if lockMask.size != lockSize:
+                    assert lockWidth, lockWidth
+                    assert lockHeight, lockHeight
+                    assert lockMask.width <= lockWidth and lockMask.height <= lockHeight, (lockSize, lockMask.size)  # noqa: PT018
+                    assert lockMask.width == lockWidth or  lockMask.height == lockHeight, (lockSize, lockMask.size)  # Make sure it would be just padding, because resizing 1-bit images is bad idea
+                    lockMask = await timeToThread(imagePad, lockMask, lockSize, RESAMPLING, color = 255)  # White background in grayscale
+            else:
+                lockMask = imageNew(BW1, lockSize, 1)  # white/transparent background
+            assert lockMask.mode == BW1, lockMask.mode
+            return np.asarray(lockMask, bool)
 
-        if keyMask:
-            if rotateMethod is not None:
-                keyMask = await timeToThread(keyMask.transpose, rotateMethod)
-            if flip:
-                keyMask = await timeToThread(keyMask.transpose, FLIP)
-            if keyMask.size != source.size:
-                assert keyMask.width <= source.width and keyMask.height <= source.height, (source.size, keyMask.size)  # noqa: PT018
-                assert keyMask.width == source.width or  keyMask.height == source.height, (source.size, keyMask.size)  # Make sure it would be just padding, because resizing 1-bit images is bad idea
-                keyMask = await timeToThread(imagePad, keyMask, source.size, RESAMPLING, color = 255)  # White background in grayscale
-        else:
-            keyMask = imageNew(BW1, source.size, 1)  # white/transparent background
-        assert keyMask.mode == BW1, keyMask.mode
-        keyMaskArray = np.asarray(keyMask, bool)
+        @typechecked
+        async def getKeyMaskArray() -> np.ndarray:
+            nonlocal keyMask
+            if keyMask:
+                if rotateMethod is not None:
+                    keyMask = await timeToThread(keyMask.transpose, rotateMethod)
+                if flip:
+                    keyMask = await timeToThread(keyMask.transpose, FLIP)
+                if keyMask.size != source.size:
+                    assert keyMask.width <= source.width and keyMask.height <= source.height, (source.size, keyMask.size)  # noqa: PT018
+                    assert keyMask.width == source.width or  keyMask.height == source.height, (source.size, keyMask.size)  # Make sure it would be just padding, because resizing 1-bit images is bad idea
+                    keyMask = await timeToThread(imagePad, keyMask, source.size, RESAMPLING, color = 255)  # White background in grayscale
+            else:
+                keyMask = imageNew(BW1, source.size, 1)  # white/transparent background
+            assert keyMask.mode == BW1, keyMask.mode
+            return np.asarray(keyMask, bool)
+
+        (lockMaskArray, keyMaskArray) = await gather(getLockMaskArray(), getKeyMaskArray())
 
     if lockMask or keyMask or smooth:
         # 2x2 pixels
@@ -626,8 +636,8 @@ async def overlay(lockImage: Image,
         keyImage = newKeyImage
 
     assert lockImage.size == keyImage.size, (lockImage.size, keyImage.size)
-    lockArray = await timeToThread(np.asarray, lockImage)
-    keyArray = await timeToThread(np.asarray, keyImage)
+    (lockArray, keyArray) = await gather(timeToThread(np.asarray, lockImage),
+                                         timeToThread(np.asarray, keyImage))
     minArray = await timeToThread(np.minimum, lockArray, keyArray)
     ret = await timeToThread(imageFromArray, minArray)
     return finalize(ret)
