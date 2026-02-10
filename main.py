@@ -22,7 +22,7 @@ if version_info < (3, 13):  # noqa: UP036
 PREFIX = "[main]"
 print(PREFIX, "Loading app")
 
-from asyncio import create_task, sleep, to_thread
+from asyncio import create_task, gather, sleep, to_thread
 from collections.abc import Buffer, Iterable, Iterator, Mapping, Sequence  # `beartype` needs these things in runtime
 from contextlib import suppress
 from datetime import datetime
@@ -599,31 +599,30 @@ class ImageBlock:
         startTime = time()
         log("Started pipeline")
         assert cls.worker
-        ret = await cls.process(Stage.PROCESSED_SOURCE,
-                                cls.worker.prepare, Stage.SOURCE,  # type: ignore[attr-defined]
-                                options = cls.PROCESS_OPTIONS[prepare])
+        await cls.process(Stage.PROCESSED_SOURCE,
+                          cls.worker.prepare, Stage.SOURCE,  # type: ignore[attr-defined]
+                          options = cls.PROCESS_OPTIONS[prepare])
         if processedSourceImage := cls.imageBlocks[Stage.PROCESSED_SOURCE].image:
             assert cls.options
             (keyWidth, keyHeight) = (m := max(processedSourceImage.size), m) if cls.options.randomRotate else processedSourceImage.size
             (lockWidth, lockHeight) = getLockSize((keyWidth, keyHeight), cls.options.lockFactor, cls.options.lockWidth, cls.options.lockHeight)
-            ret = await cls.process(Stage.PROCESSED_LOCK,
-                                    cls.worker.prepare, Stage.LOCK,  # type: ignore[attr-defined]
-                                    options = {'resizeWidth': lockWidth, 'resizeHeight': lockHeight, 'dither': None})
-            ret = await cls.process(Stage.PROCESSED_KEY,
-                                    cls.worker.prepare, Stage.KEY,  # type: ignore[attr-defined]
-                                    options = {'resizeWidth': keyWidth, 'resizeHeight': keyHeight, 'dither': None})
+            await gather(cls.process(Stage.PROCESSED_LOCK,
+                                     cls.worker.prepare, Stage.LOCK,  # type: ignore[attr-defined]
+                                     options = {'resizeWidth': lockWidth, 'resizeHeight': lockHeight, 'dither': None}),
+                         cls.process(Stage.PROCESSED_KEY,
+                                     cls.worker.prepare, Stage.KEY,  # type: ignore[attr-defined]
+                                     options = {'resizeWidth': keyWidth, 'resizeHeight': keyHeight, 'dither': None}))
             options: Mapping[str, Any] | Sequence[str]
             options = cls.options.fillOptions(cls.PROCESS_OPTIONS[encrypt], lockWidth = lockWidth, lockHeight = lockHeight)
             ret = await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
                                     cls.worker.encrypt, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
                                     optionalSourceStages = (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
                                     options = options)
+            options = cls.PROCESS_OPTIONS[overlay]
             if ret:
                 assert isinstance(ret, Mapping), type(ret)
-                options = dict.fromkeys(cls.PROCESS_OPTIONS[overlay])
+                options = dict.fromkeys(options)
                 options.update(ret)
-            else:
-                options = cls.PROCESS_OPTIONS[overlay]
             ret = await cls.process(Stage.KEY_OVER_LOCK_TEST,
                                     cls.worker.overlay, (Stage.GENERATED_LOCK, Stage.GENERATED_KEY),  # type: ignore[attr-defined]
                                     options = options)
