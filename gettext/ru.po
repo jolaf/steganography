@@ -89,59 +89,59 @@ msgstr "Случайный поворот ключа"
 msgid "Random key flip"
 msgstr "Случайное отзеркаливание"
 
-#: index.html:102
+#: index.html:103
 msgid "Employ dithering"
 msgstr "Использовать дизеринг"
 
-#: index.html:104
+#: index.html:105
 msgid "emulates grayscale, but hardens decryption"
 msgstr "пытается передать оттенки серого, но усложняет дешифровку"
 
-#: index.html:107
+#: index.html:108
 msgid "Smoother background"
 msgstr "Равномерный фон"
 
-#: index.html:109
+#: index.html:110
 msgid "doubles the image resolution"
 msgstr "удваивает размеры изображения"
 
-#: index.html:111
+#: index.html:112
 msgid "Reset options to defaults"
 msgstr "Сбросить настройки на значения по умолчанию"
 
-#: index.html:116
+#: index.html:117
 msgid "Click to remove this image from processing"
 msgstr "Нажмите, чтобы убрать это изображение из обработки"
 
-#: index.html:116
+#: index.html:117
 msgid "Remove"
 msgstr "Убрать"
 
-#: index.html:117
+#: index.html:118
 msgid "Click to upload a file to process"
 msgstr "Нажмите, чтобы загрузить изображение для обработки"
 
-#: index.html:117
+#: index.html:118
 msgid "Upload"
 msgstr "Загрузить"
 
-#: index.html:123
+#: index.html:124
 msgid "preview"
 msgstr "просмотр"
 
-#: index.html:125
+#: index.html:126
 msgid "Click to download to your device"
 msgstr "Нажмите, чтобы скачать изображение на ваше устройство"
 
-#: index.html:126
+#: index.html:127
 msgid "Download"
 msgstr "Скачать"
 
-#: index.html:139
+#: index.html:140
 msgid "Vasily Zakharov"
 msgstr "Василий Захаров"
 
-#: index.html:139
+#: index.html:140
 msgid "Victor Kurush"
 msgstr "Виктор Куруш"
 
@@ -161,62 +161,62 @@ msgstr "GETTEXT_TEST_ru_RU"
 msgid "Do not use"
 msgstr "Не используйте"
 
-#: main.py:481
+#: main.py:488
 msgid "Source image"
 msgstr "Исходный рисунок"
 
-#: main.py:482
+#: main.py:489
 msgid "Lock mask"
 msgstr "Маска замка́"
 
-#: main.py:483
+#: main.py:490
 msgid "Key mask"
 msgstr "Маска ключа"
 
-#: main.py:484
-msgid "Processed source"
-msgstr "Обработанный исходник"
+#: main.py:491
+msgid "Prepared source"
+msgstr "Подготовленный исходник"
 
-#: main.py:485
-msgid "Processed lock mask"
-msgstr "Обработанная МЗ"
+#: main.py:492
+msgid "Prepared lock mask"
+msgstr "Подготовленная МЗ"
 
-#: main.py:486
-msgid "Processed key mask"
-msgstr "Обработанная МК"
+#: main.py:493
+msgid "Prepared key mask"
+msgstr "Подготовленная МК"
 
-#: main.py:487
+#: main.py:494
 msgid "Generated lock"
 msgstr "Готовый замо́к"
 
-#: main.py:488
+#: main.py:495
 msgid "Generated key"
 msgstr "Готовый ключ"
 
-#: main.py:489
+#: main.py:496
 msgid "Overlay test"
 msgstr "Тест наложения"
 
-#: main.py:560
+#: main.py:567
 msgid "Processing image"
 msgstr "Обработка изображения"
 
-#: main.py:590
+#: main.py:597
 msgid "processing image"
 msgstr "обработки изображения"
 
-#: main.py:732
+#: main.py:746
 msgid "ERROR"
 msgstr "ОШИБКА"
 
-#: main.py:765
+#: main.py:779
 msgid "bytes"
 msgstr "байт"
 
-#: main.py:805 main.py:835
+#: main.py:819 main.py:849
 msgid "loading image"
 msgstr "загрузки изображения"
 
-#: main.py:826
+#: main.py:840
 msgid "Loading image"
 msgstr "Загрузка изображения"

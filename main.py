@@ -33,7 +33,7 @@ from inspect import iscoroutinefunction
 from itertools import chain
 from pathlib import Path
 from re import findall, match
-from sys import stderr  # pylint: disable=ungrouped-imports
+from sys import modules, stderr  # pylint: disable=ungrouped-imports
 from time import time
 from typing import cast, Any, ClassVar, Final, TypeAlias
 
@@ -310,6 +310,12 @@ class Options(Storage):
         self.updateStyle()
         self.setLanguage()
 
+        @when(CLICK, page['options-regenerate'])
+        @typechecked
+        async def regenerateEventHandler(_e: Event) -> None:
+            ImageBlock.imageBlocks[Stage.PREPARED_KEY].dirty = True
+            await ImageBlock.pipeline()
+
         @when(CLICK, page['options-reset'])
         @typechecked
         async def resetEventHandler(_e: Event) -> None:
@@ -365,7 +371,7 @@ class Options(Storage):
             if valueType is str:  # taskName or language
                 if name == 'taskName':
                     if not newValue:
-                        newValue = getDefaultTaskName()  # Provide random task name to save user from extra thinking
+                        newValue = getDefaultTaskName()  # Provide a random task name to save the user from extra thinking
                     elif not element.checkValidity():
                         newValue = self.get(name, getDefaultTaskName())
             elif valueType is bool:  # checkbox
@@ -465,9 +471,9 @@ class Stage(Enum):
     SOURCE = auto()
     LOCK = auto()
     KEY = auto()
-    PROCESSED_SOURCE = auto()
-    PROCESSED_LOCK = auto()
-    PROCESSED_KEY = auto()
+    PREPARED_SOURCE = auto()
+    PREPARED_LOCK = auto()
+    PREPARED_KEY = auto()
     GENERATED_LOCK = auto()
     GENERATED_KEY = auto()
     KEY_OVER_LOCK_TEST = auto()
@@ -482,18 +488,18 @@ class ImageBlock:
         _("Source image"),
         _("Lock mask"),
         _("Key mask"),
-        _("Processed source"),
-        _("Processed lock mask"),
-        _("Processed key mask"),
+        _("Prepared source"),
+        _("Prepared lock mask"),
+        _("Prepared key mask"),
         _("Generated lock"),
         _("Generated key"),
         _("Overlay test"),
     ), strict = True))
 
     SOURCES: Final[Mapping[Stage, Stage]] = {
-        Stage.PROCESSED_SOURCE: Stage.SOURCE,
-        Stage.PROCESSED_LOCK: Stage.LOCK,
-        Stage.PROCESSED_KEY: Stage.KEY,
+        Stage.PREPARED_SOURCE: Stage.SOURCE,
+        Stage.PREPARED_LOCK: Stage.LOCK,
+        Stage.PREPARED_KEY: Stage.KEY,
     }
 
     PRELOADED_FILES: Final[Mapping[Stage, str]] = {
@@ -599,24 +605,26 @@ class ImageBlock:
         startTime = time()
         log("Started pipeline")
         assert cls.worker
-        await cls.process(Stage.PROCESSED_SOURCE,
+        await cls.process(Stage.PREPARED_SOURCE,
                           cls.worker.prepare, Stage.SOURCE,  # type: ignore[attr-defined]
                           options = cls.PROCESS_OPTIONS[prepare])
-        if processedSourceImage := cls.imageBlocks[Stage.PROCESSED_SOURCE].image:
+        if (preparedSource := cls.imageBlocks[Stage.PREPARED_SOURCE]).dirty:
+            cls.imageBlocks[Stage.KEY].dirty = cls.imageBlocks[Stage.LOCK].dirty = True
+        if preparedSource.image:
             assert cls.options
-            (keyWidth, keyHeight) = (m := max(processedSourceImage.size), m) if cls.options.randomRotate else processedSourceImage.size
+            (keyWidth, keyHeight) = (m := max(preparedSource.image.size), m) if cls.options.randomRotate else preparedSource.image.size
             (lockWidth, lockHeight) = getLockSize((keyWidth, keyHeight), cls.options.lockFactor, cls.options.lockWidth, cls.options.lockHeight)
-            await gather(cls.process(Stage.PROCESSED_LOCK,
+            await gather(cls.process(Stage.PREPARED_LOCK,
                                      cls.worker.prepare, Stage.LOCK,  # type: ignore[attr-defined]
                                      options = {'resizeWidth': lockWidth, 'resizeHeight': lockHeight, 'dither': None}),
-                         cls.process(Stage.PROCESSED_KEY,
+                         cls.process(Stage.PREPARED_KEY,
                                      cls.worker.prepare, Stage.KEY,  # type: ignore[attr-defined]
                                      options = {'resizeWidth': keyWidth, 'resizeHeight': keyHeight, 'dither': None}))
             options: Mapping[str, Any] | Sequence[str]
             options = cls.options.fillOptions(cls.PROCESS_OPTIONS[encrypt], lockWidth = lockWidth, lockHeight = lockHeight)
             ret = await cls.process((Stage.GENERATED_LOCK, Stage.GENERATED_KEY),
-                                    cls.worker.encrypt, Stage.PROCESSED_SOURCE,  # type: ignore[attr-defined]
-                                    optionalSourceStages = (Stage.PROCESSED_LOCK, Stage.PROCESSED_KEY),
+                                    cls.worker.encrypt, Stage.PREPARED_SOURCE,  # type: ignore[attr-defined]
+                                    optionalSourceStages = (Stage.PREPARED_LOCK, Stage.PREPARED_KEY),
                                     options = options)
             options = cls.PROCESS_OPTIONS[overlay]
             if ret:
@@ -636,8 +644,8 @@ class ImageBlock:
         self.stage = stage
         self.name = stage.name.lower().replace('_', '-')
         self.isUpload = (stage.value <= Stage.KEY.value)  # pylint: disable=superfluous-parens
-        self.isProcessed = not self.isUpload and stage.value <= Stage.PROCESSED_KEY.value
-        self.isGenerated = not self.isUpload and not self.isProcessed
+        self.isPrepared = not self.isUpload and stage.value <= Stage.PREPARED_KEY.value
+        self.isGenerated = not self.isUpload and not self.isPrepared
         self.image: Image | None = None
         self.fileName: str | None = None
         self.source: ImageBlock | None = None
@@ -645,7 +653,7 @@ class ImageBlock:
 
         # Create DOM element
         block = page['template'].clone(self.getElementID('block'))
-        targetID = 'uploaded' if self.isUpload else 'processed' if self.isProcessed else 'generated'
+        targetID = 'uploaded' if self.isUpload else 'prepared' if self.isPrepared else 'generated'
         page[targetID].append(block)
 
         # Assign named IDs to all children that have image-* classes
@@ -871,6 +879,10 @@ async def main() -> None:
     await ImageBlock.pipeline()
     await repaint()
     log("Started app")
+    log("Loaded system modules:",
+        tuple(sorted({name.split('.')[0] for name in modules if not name.startswith('_')} \
+                   - {'PIL', 'Steganography', 'beartype', 'coolname', 'js', 'numpy', 'polyscript', 'pyodide', 'pyodide_js', 'pyscript', 'workerlib'})),
+        showToUser = False)
 
 if __name__ == '__main__':
     create_task(main())  # `create_task()` is only needed to silence static checkers that don't like `await` in global module code  # noqa: RUF006

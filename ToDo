@@ -1,20 +1,17 @@
 Provide proper instructions if loading fails: github pages, python web server, npm web server
 Regenerate at options change
++Add Regenerate button for random options
 Disable smooth if lock or key are loaded
 Add "Download All" button
-Test with offline PyScript
++Test with offline PyScript
 Create build.py, freeze dependency versions!
 <link rel="alternate" hreflang="ru" href="/ru/"> https://github.com/untra/polyglot
 File a bug against PyScript about UI freezing when large image is resized in a worker
 When replacing any image, kill everything below the chain (still not working!)
 
 workerlib
-+ Mention Micropython is not supported as code is Python 3.13
 - Add documentation on remote module
 - Describe "minimum mode" with unpacking JsProxies and that's all, can be used for other languages too. Switch off adapters, that's it?
-+ Add "pickle" encoder/decoder for adapters
-- Add "unsafe" adapter for unsafe types only - maybe "Any" should do that? Adapters are for unknown classes, so looks like this is the right way
-+ Add "anyCall" calling sub-worker, enable it from worker side. Sends (funcName, args, kwargs) as a single structure
-- Add "pickle" calling sub-worker, inherits the previous one
-+ ["Enum", "None", "None"] - for any Enums, mention in doc
-- Add checking constructor arguments when creating None encoder
++ Add "unsafe" adapter for unsafe types only - maybe "Any" should do that? Adapters are for unknown classes, so looks like this is the right way
+/ Add "pickle" calling sub-worker, inherits the previous one
++ Add checking constructor arguments when creating None encoder

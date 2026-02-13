@@ -11,7 +11,7 @@
   <meta name="application-name" content="Steganography">
   <meta name="msapplication-TileColor" content="burlywood">
   <meta name="theme-color" content="burlywood">
-  <script src="./mini-coi.js" scope="./"></script> <!-- Workaround for CORS limitations -->
+  <script src="./mini-coi-fd.js" scope="./"></script> <!-- Workaround for CORS limitations -->
   <link rel="icon" type="image/png" sizes="96x96" href="./images/favicon-96.png">
   <link rel="icon" type="image/svg+xml" href="./images/favicon.svg">
   <link rel="shortcut icon" href="./images/favicon.ico">
@@ -97,6 +97,7 @@
           <input id="option-random-rotate">
           <label for="option-random-flip">Random key flip</label>
           <input id="option-random-flip">
+          <button id="options-regenerate">Regenerate images</button>
         </div>
         <div id="option-dither-block">
           <label for="option-dither">Employ dithering</label>
@@ -130,7 +131,7 @@
         </div>
       </div>
       <div id="uploaded" class="image-group"></div>
-      <div id="processed" class="image-group"></div>
+      <div id="prepared" class="image-group"></div>
       <div id="generated" class="image-group"></div>
     </div>
   </div>
